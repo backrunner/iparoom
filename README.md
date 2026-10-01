@@ -146,6 +146,18 @@ iparoom-mcp --transport http --hostname ipa.lan --mcp-port 3001
 
 MCP 地址为 `http://ipa.lan:3001/mcp`，客户端发送 `Authorization: Bearer <IPAROOM_MCP_TOKEN>`；`--mcp-port` 与 IPA 网页端口分开。传入 `--cert/--key` 时两个端口都使用 HTTPS。HTTP MCP 采用无状态 POST 请求，校验 Host/Origin，限制请求体为 64 KiB；stdio 不需要 MCP Token。`path` 是 **MCP 服务主机**上的文件路径，不能用调用者电脑的路径代替。CLI/MCP 独立模式不加载项目 `.env`，通过参数或启动进程的环境注入配置。
 
+### 添加到 Agent 客户端
+
+安装 CLI 包后，可添加用户级 stdio MCP：
+
+```sh
+codex mcp add iparoom -- iparoom-mcp
+claude mcp add --scope user --transport stdio iparoom -- iparoom-mcp
+gemini mcp add --scope user --transport stdio iparoom iparoom-mcp
+```
+
+GUI 客户端不一定继承终端的 nvm/PATH。此时将 `command` 配置为 Node 24+ 的绝对路径，将 `args` 配置为已安装包中 `bin/iparoom-mcp.mjs` 的绝对路径；需要 hostname/证书时继续追加对应参数。在客户端刷新 MCP 或开启新会话，并确认五个工具可用。Gemini 只会在受信任目录中启用配置；保留客户端现有的工具审批与目录信任设置。
+
 ## Agent Skill
 
 配套 skill [`iparoom-install`](./skills/iparoom-install/SKILL.md) 指导 agent 完成 Xcode 导出、局域网临时分享/常驻上传、内网 HTTPS 与设备信任、文件完整性检查和真机结果确认。

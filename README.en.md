@@ -109,6 +109,18 @@ iparoom-mcp --transport http --hostname ipa.lan --mcp-port 3001
 
 Connect to `http://ipa.lan:3001/mcp` with `Authorization: Bearer <IPAROOM_MCP_TOKEN>`. `--mcp-port` is independent of the IPA web port. Supplying `--cert/--key` enables HTTPS on both ports. Host/Origin checks and a 64 KiB JSON limit apply. Stdio requires no MCP token. Independent CLI/MCP modes do not load project `.env` files; pass flags or environment values. HTTP still provides download-only IPA delivery; OTA requires trusted HTTPS and eligible signing.
 
+### Add it to an agent client
+
+After installing the CLI package, add a user-level stdio MCP:
+
+```sh
+codex mcp add iparoom -- iparoom-mcp
+claude mcp add --scope user --transport stdio iparoom -- iparoom-mcp
+gemini mcp add --scope user --transport stdio iparoom iparoom-mcp
+```
+
+GUI clients may not inherit your terminal's nvm/PATH. In that case, use an absolute Node 24+ path as `command` and the installed package's absolute `bin/iparoom-mcp.mjs` path in `args`, followed by hostname/certificate flags when needed. Refresh MCP or start a new client session and verify all five tools. Gemini enables servers only in trusted directories; retain existing tool approval and directory trust settings.
+
 ## Agent skill
 
 The companion [`iparoom-install`](./skills/iparoom-install/SKILL.md) skill guides agents through Xcode export, direct/persistent LAN distribution, internal HTTPS trust, file integrity checks, and device installation evidence.
