@@ -11,6 +11,7 @@ description: 使用 IPA Room 将 Xcode 导出的 IPA 分发到局域网 iPhone/i
 
 先检查 `node --version`、`iparoom --help`、项目构建/签名约定及用户提供的 IPA、Archive、设备和内网服务信息。CLI 需要 Node.js 24+。不要扫描或显示 Token、证书私钥、Keychain 密钥；使用已配置的凭据与签名机制。
 
+- **不使用网页 HTTPS、且有可访问设备的 Mac：** 读取 [设备连接安装](references/nonhttps-installation.md)，使用 HTTP 交付 IPA 后通过现有 Apple 工具安装；IPA Room 的自动设备安装命令尚未实现，不杜撰 `iparoom install`。
 - **已有 IPA、临时分享：** 使用直接文件入口，无需预先启动服务器或登录。
 - **用户指定常驻服务或需要保留版本：** 使用 `upload`；已有有效会话/环境凭据就继续，不要求重复登录。
 - **只有 Archive/源码：** 根据项目约定构建并导出。`iparoom export` 是“导出后上传到常驻服务”，不会独立启动页面。临时分享应先用项目导出流程或 `xcodebuild -exportArchive` 得到 IPA，再使用直接文件入口。
@@ -36,7 +37,7 @@ iparoom "/absolute/path/App.ipa" --host 192.168.1.10 --port 8443 \
   --cert "/path/server.crt" --key "/path/server.key" --json --no-open
 ```
 
-证书示例路径不是预置资产。缺少受信任的内网 HTTPS 时，先完成 IPA/页面准备，读取 [内网证书与设备操作](references/lan-installation.md)，明确需要的证书或设备信任步骤，不把 HTTP 下载链接称为可在线安装。不要使用 `curl -k` 或关闭 TLS 校验来证明就绪。
+证书示例路径不是预置资产。用户指定 Safari OTA 且缺少受信任的内网 HTTPS 时，先完成 IPA/页面准备，读取 [内网证书与设备操作](references/lan-installation.md)，明确需要的证书或设备信任步骤，不把 HTTP 下载链接称为可在线安装。不要使用 `curl -k` 或关闭 TLS 校验来证明就绪。
 
 ## 常驻服务
 

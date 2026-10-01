@@ -180,6 +180,8 @@ NODE_EXTRA_CA_CERTS=./certs/iparoom-root.crt \
 
 参考：[Apple 无线分发说明](https://support.apple.com/en-gb/guide/deployment/depce7cefc4d/1/web)、[SvelteKit Node 部署](https://svelte.dev/docs/kit/adapter-node)。
 
+无需网页 HTTPS 时，可将 IPA 通过局域网 HTTP 下载到 Mac，再使用 Xcode / Device Hub 或 Apple Configurator 安装到已连接的目标设备。具体操作与后续 CLI 设计见 [设备安装方案](./skills/iparoom-install/references/nonhttps-installation.md)。自动 `iparoom devices` / `iparoom install` 目前尚未实现。
+
 ## API
 
 所有 `/api/builds*` 请求都需要管理会话或 `Authorization: Bearer <token>`。

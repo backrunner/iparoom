@@ -117,6 +117,8 @@ OTA requires device-reachable LAN HTTPS with a certificate trusted by iOS. Open 
 
 Provisioning metadata is a hint, not cryptographic signature verification. The service does not sign or re-sign applications. Expired, unknown, App Store, or HTTP-only builds show download access without an OTA button. A distribution URL does not create a remote LLDB connection; live debugging still requires an Xcode-supported device connection.
 
+For a path without web HTTPS, download the IPA over LAN HTTP to a Mac and install it on an authorized connected device with Xcode / Device Hub or Apple Configurator. See the bilingual [device installation options](./skills/iparoom-install/references/nonhttps-installation.md). Automatic `iparoom devices` / `iparoom install` commands are proposed and not yet implemented.
+
 Share URLs provide access to anyone who possesses them. Revocation and rotation invalidate the old page, manifest, and download URLs for future requests. Downloads already in progress and apps already installed are unaffected.
 
 Tests use synthetic IPA fixtures, including binary Info.plist files. They verify API, CLI, browser, manifests, download integrity, byte ranges, and revocation. Fixtures are not signed installable apps; real-device OTA validation needs a valid signed IPA, trusted LAN HTTPS, and an eligible device.
