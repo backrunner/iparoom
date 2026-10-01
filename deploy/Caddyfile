@@ -1,0 +1,9 @@
+{
+  auto_https disable_redirects
+  skip_install_trust
+}
+
+https://{$IPAROOM_LAN_HOST} {
+  tls internal
+  reverse_proxy iparoom:3000
+}

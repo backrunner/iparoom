@@ -1,0 +1,9 @@
+node_modules
+.svelte-kit
+build
+pnpm-lock.yaml
+data
+test-results
+packages/cli/runtime
+dist
+packages/cli/skills/

@@ -1,0 +1,13 @@
+node_modules
+.svelte-kit
+build
+data
+.env
+.env.*
+.git
+test-results
+playwright-report
+certs
+packages/cli/runtime
+dist
+packages/cli/skills/

@@ -1,0 +1,30 @@
+{
+  "name": "iparoom-cli",
+  "version": "0.1.0",
+  "description": "Upload Xcode IPA builds and create iOS installation links with IPA Room",
+  "type": "module",
+  "bin": {
+    "iparoom": "./bin/iparoom.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "runtime",
+    "README.md",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "node --check bin/iparoom.mjs",
+    "prepack": "node ../../scripts/package-cli.mjs --build"
+  },
+  "dependencies": {
+    "commander": "15.0.0",
+    "bplist-parser": "0.5.0",
+    "plist": "5.0.0",
+    "qrcode": "1.5.4",
+    "yauzl": "3.4.0"
+  }
+}

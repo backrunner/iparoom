@@ -1,0 +1,4 @@
+interface:
+  display_name: 'IPA Room 局域网安装'
+  short_description: '使用 IPA Room 从 Xcode 构建生成内网安装页，并逐步验证设备安装结果'
+  default_prompt: '使用 $iparoom-install 将这个 IPA 分发到局域网测试设备，检查安装入口并报告实际安装状态。'

@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+allowBuilds:
+  esbuild: true
+  '@parcel/watcher': true
+overrides:
+  # SvelteKit still requests cookie 0.6; ship the compatible validation fix.
+  cookie: 0.7.2

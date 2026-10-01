@@ -1,0 +1,53 @@
+{
+  "name": "iparoom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.3.4",
+  "scripts": {
+    "dev": "node scripts/serve.mjs --dev",
+    "build": "vite build",
+    "start": "node scripts/serve.mjs",
+    "preview": "vite preview",
+    "prepare": "svelte-kit sync",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "node scripts/package-cli.mjs && playwright test",
+    "cli": "node packages/cli/bin/iparoom.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build:cli": "pnpm build && node scripts/package-cli.mjs",
+    "pack:cli": "pnpm --filter iparoom-cli pack --out dist/iparoom-cli-0.1.0.tgz",
+    "skill:install": "node scripts/install-skill.mjs"
+  },
+  "dependencies": {
+    "@lucide/svelte": "1.49.0",
+    "@sveltejs/adapter-node": "5.5.7",
+    "bits-ui": "2.19.3",
+    "bplist-parser": "0.5.0",
+    "plist": "5.0.0",
+    "qrcode": "1.5.4",
+    "svelte": "5.57.1",
+    "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "26.6.3",
+    "@types/qrcode": "1.5.6",
+    "@types/yauzl": "3.4.0",
+    "@types/yazl": "3.3.1",
+    "prettier": "3.9.9",
+    "prettier-plugin-svelte": "4.1.1",
+    "sass": "1.105.1",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.1",
+    "vitest": "5.0.2",
+    "yazl": "3.3.1",
+    "@sveltejs/kit": "2.70.3"
+  }
+}
