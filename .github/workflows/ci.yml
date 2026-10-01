@@ -24,6 +24,11 @@ jobs:
       - run: pnpm test
       - run: pnpm audit --prod
       - run: pnpm build:cli
+      - name: Use reachable Ubuntu HTTPS mirrors
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - run: pnpm pack:cli
