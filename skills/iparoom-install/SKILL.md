@@ -1,6 +1,6 @@
 ---
 name: iparoom-install
-description: 使用 IPA Room 将 Xcode 导出的 IPA 分发到局域网 iPhone/iPad 测试设备。适用于直接运行 iparoom app.ipa、上传常驻服务、准备 OTA 安装链接及检查安装结果；不用于 App Store/TestFlight 发布或远程 LLDB 调试。
+description: 使用 IPA Room 将 Xcode 导出的 IPA 分发到局域网 iPhone/iPad 测试设备。适用于 CLI/MCP 生成 IPA 安装链接、上传常驻服务、配置证书 hostname 及检查安装结果；不用于 App Store/TestFlight 发布或远程 LLDB 调试。
 ---
 
 # IPA Room 局域网安装
@@ -12,6 +12,7 @@ description: 使用 IPA Room 将 Xcode 导出的 IPA 分发到局域网 iPhone/i
 先检查 `node --version`、`iparoom --help`、项目构建/签名约定及用户提供的 IPA、Archive、设备和内网服务信息。CLI 需要 Node.js 24+。不要扫描或显示 Token、证书私钥、Keychain 密钥；使用已配置的凭据与签名机制。
 
 - **不使用网页 HTTPS、且有可访问设备的 Mac：** 读取 [设备连接安装](references/nonhttps-installation.md)，使用 HTTP 交付 IPA 后通过现有 Apple 工具安装；IPA Room 的自动设备安装命令尚未实现，不杜撰 `iparoom install`。
+- **已连接 IPA Room MCP 或需要独立 MCP：** 使用 `iparoom_create_install_link`；读取 [MCP 与 hostname](references/mcp.md)，理解会话寿命、服务主机文件路径及 HTTP MCP 认证。
 - **已有 IPA、临时分享：** 使用直接文件入口，无需预先启动服务器或登录。
 - **用户指定常驻服务或需要保留版本：** 使用 `upload`；已有有效会话/环境凭据就继续，不要求重复登录。
 - **只有 Archive/源码：** 根据项目约定构建并导出。`iparoom export` 是“导出后上传到常驻服务”，不会独立启动页面。临时分享应先用项目导出流程或 `xcodebuild -exportArchive` 得到 IPA，再使用直接文件入口。
@@ -28,12 +29,12 @@ iparoom "/absolute/path/App.ipa" --json --no-open
 
 在受管理的长运行终端会话中启动，记录进程/会话和启动 JSON；等待完整 JSON 后再使用其中的 `build.installUrl`、`downloadUrl`、`manifestUrl`、`otaUrl`、版本、构建号、签名提示、SHA-256。不要杜撰端口、Token 或分享路径，也不要把二维码输出当作 JSON。
 
-若用户要自动打开桌面页面，可省略 `--no-open`。CLI 默认选择本机私有 IPv4 和空闲端口；多网卡时用 `--host <本机内网 IPv4>`，需要固定端口时用 `--port`。直接文件模式不读取当前项目 `.env`，也不使用远程 CLI 登录；不要通过登录解决它的启动问题。
+若用户要自动打开桌面页面，可省略 `--no-open`。CLI 默认监听 `0.0.0.0`（所有 IPv4 网卡），自动选择私有 IPv4 作为链接地址并分配空闲端口。用 `--host <本机 IPv4>` 限制监听；用 `--hostname <设备可解析的域名>` 指定链接和证书域名；需要固定端口时用 `--port`。不要把 `0.0.0.0` 当作访问链接。直接文件模式不读取当前项目 `.env`，也不使用远程 CLI 登录；不要通过登录解决它的启动问题。
 
-**HTTP 只能交付页面和下载，不能完成 iOS OTA。** 用户要求在线安装时，优先使用已有、与监听 IP 匹配且被设备信任的证书：
+**HTTP 只能交付页面和下载，不能完成 iOS OTA。** 用户要求在线安装时，优先使用已有、与访问 hostname 匹配且被设备信任的证书：
 
 ```sh
-iparoom "/absolute/path/App.ipa" --host 192.168.1.10 --port 8443 \
+iparoom "/absolute/path/App.ipa" --hostname ipa.lan --port 8443 \
   --cert "/path/server.crt" --key "/path/server.key" --json --no-open
 ```
 

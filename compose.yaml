@@ -3,11 +3,11 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - '${IPAROOM_LAN_HOST:?Set this host LAN IPv4 address}:3000:3000'
+      - '${IPAROOM_LAN_HOST:-0.0.0.0}:3000:3000'
     environment:
       IPAROOM_ADMIN_TOKEN: ${IPAROOM_ADMIN_TOKEN:?Set IPAROOM_ADMIN_TOKEN}
-      IPAROOM_BASE_URL: ${IPAROOM_BASE_URL:-http://${IPAROOM_LAN_HOST}:3000}
-      ORIGIN: ${IPAROOM_BASE_URL:-http://${IPAROOM_LAN_HOST}:3000}
+      IPAROOM_BASE_URL: ${IPAROOM_BASE_URL:-http://${IPAROOM_HOSTNAME:?Set a device-reachable hostname or LAN IP}:3000}
+      ORIGIN: ${IPAROOM_BASE_URL:-http://${IPAROOM_HOSTNAME:?Set a device-reachable hostname or LAN IP}:3000}
       BODY_SIZE_LIMIT: 1G
     volumes:
       - iparoom-data:/app/data

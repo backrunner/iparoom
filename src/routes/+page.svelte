@@ -351,9 +351,9 @@
             ><Tabs.List class="tabs" aria-label="CLI 使用说明"
               ><Tabs.Trigger value="local">直接启动</Tabs.Trigger><Tabs.Trigger value="upload"
                 >上传 IPA</Tabs.Trigger
-              ><Tabs.Trigger value="xcode">Xcode 导出</Tabs.Trigger><Tabs.Trigger value="ci"
-                >CI / 自动化</Tabs.Trigger
-              ></Tabs.List
+              ><Tabs.Trigger value="xcode">Xcode 导出</Tabs.Trigger><Tabs.Trigger value="mcp"
+                >Agent / MCP</Tabs.Trigger
+              ><Tabs.Trigger value="ci">CI / 自动化</Tabs.Trigger></Tabs.List
             ><Tabs.Content value="local">
               <h3>一个 IPA，直接开启测试页面</h3>
               <p>安装 CLI 后，在任意目录运行。自动选择内网地址、打开页面，并打印二维码。</p>
@@ -361,11 +361,11 @@
                   >iparoom ./MyApp.ipa
 iparoom ./exports --notes "本周测试构建"
 # 使用设备信任的内网证书
-iparoom ./MyApp.ipa --port 8443 --cert ./server.crt --key ./server.key</code
+iparoom ./MyApp.ipa --hostname ipa.lan --port 8443 --cert ./server.crt --key ./server.key</code
                 ></pre>
               <p>
-                无需提前启动服务或登录。按 Ctrl+C 停止临时分享。默认 HTTP 支持下载；iOS
-                在线安装需使用受信任的 HTTPS 证书。
+                默认监听全部 IPv4 网卡；hostname 控制链接域名。无需提前启动服务或登录。按 Ctrl+C
+                停止临时分享。默认 HTTP 支持下载；iOS 在线安装需使用受信任的 HTTPS 证书。
               </p>
             </Tabs.Content>
             <Tabs.Content value="upload"
@@ -394,7 +394,22 @@ iparoom upload ./exports/MyApp.ipa --notes "修复登录问题"</code
                 CLI 调用 xcodebuild -exportArchive，成功导出后上传。签名证书与导出选项由 Xcode
                 管理。
               </p></Tabs.Content
-            ><Tabs.Content value="ci"
+            ><Tabs.Content value="mcp">
+              <h3>由 Agent 独立启动 MCP</h3>
+              <p>
+                在 Agent 的 MCP 配置中使用 iparoom-mcp，默认通过 stdio 通信。一次会话可以分享多个
+                IPA。
+              </p>
+              <pre><code
+                  >iparoom-mcp --hostname ipa.lan --port 8443 \
+  --cert ./server.crt --key ./server.key
+# 等价入口：iparoom mcp
+# 工具：iparoom_create_install_link，参数 path / notes</code
+                ></pre>
+              <p>
+                默认监听 0.0.0.0；设备需能解析 hostname，证书需覆盖该域名。MCP 停止后临时链接失效。
+              </p>
+            </Tabs.Content><Tabs.Content value="ci"
               ><h3>为流水线保留机器可读输出</h3>
               <pre><code
                   ># 将 Token 注入 CI 的 Secret 环境变量

@@ -2,17 +2,17 @@ services:
   iparoom:
     ports: !reset []
     environment:
-      IPAROOM_BASE_URL: https://${IPAROOM_LAN_HOST}:8443
-      ORIGIN: https://${IPAROOM_LAN_HOST}:8443
+      IPAROOM_BASE_URL: https://${IPAROOM_HOSTNAME:?Set a certificate hostname or LAN IP}:8443
+      ORIGIN: https://${IPAROOM_HOSTNAME:?Set a certificate hostname or LAN IP}:8443
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     depends_on:
       - iparoom
     ports:
-      - '${IPAROOM_LAN_HOST:?Set this host LAN IPv4 address}:8443:443'
+      - '${IPAROOM_LAN_HOST:-0.0.0.0}:8443:443'
     environment:
-      IPAROOM_LAN_HOST: ${IPAROOM_LAN_HOST}
+      IPAROOM_HOSTNAME: ${IPAROOM_HOSTNAME}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

@@ -8,14 +8,13 @@ import { get } from 'node:https';
 import { createServer } from 'node:net';
 import { fixture } from '../fixture';
 const exec = promisify(execFile);
-async function start(args: string[], cwd: string) {
+async function start(args: string[], cwd: string, bind = '127.0.0.1') {
   const child = spawn(
     process.execPath,
     [
       resolve('packages/cli/bin/iparoom.mjs'),
       ...args,
-      '--host',
-      '127.0.0.1',
+      ...(bind === 'default' ? [] : ['--host', bind]),
       '--json',
       '--no-open'
     ],
@@ -23,6 +22,8 @@ async function start(args: string[], cwd: string) {
       cwd,
       env: {
         ...process.env,
+        IPAROOM_LAN_HOST: '',
+        IPAROOM_HOSTNAME: '',
         IPAROOM_SERVER: 'http://wrong-server.invalid',
         IPAROOM_TOKEN: 'unrelated-token',
         IPAROOM_BASE_URL: 'https://wrong-server.invalid',
@@ -350,6 +351,27 @@ test('persistent startup accepts IPA files larger than the adapter default witho
         child.kill('SIGTERM');
       });
     }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('direct CLI defaults to all interfaces and uses an explicit hostname in links', async ({
+  request
+}) => {
+  const dir = await mkdtemp(join(tmpdir(), 'iparoom-hostname-test-'));
+  let child: ChildProcess | undefined;
+  try {
+    const path = join(dir, 'App.ipa');
+    await writeFile(path, await fixture());
+    const running = await start([path, '--hostname', 'ipa.example.test'], dir, 'default');
+    child = running.child;
+    expect(running.result.listenHost).toBe('0.0.0.0');
+    expect(new URL(running.result.build.installUrl).hostname).toBe('ipa.example.test');
+    const local = new URL(running.result.build.installUrl);
+    local.hostname = '127.0.0.1';
+    expect((await request.get(local.toString())).status()).toBe(200);
+  } finally {
+    if (child) await stop(child);
     await rm(dir, { recursive: true, force: true });
   }
 });

@@ -4,7 +4,8 @@
   "description": "Upload Xcode IPA builds and create iOS installation links with IPA Room",
   "type": "module",
   "bin": {
-    "iparoom": "./bin/iparoom.mjs"
+    "iparoom": "./bin/iparoom.mjs",
+    "iparoom-mcp": "./bin/iparoom-mcp.mjs"
   },
   "files": [
     "bin",
@@ -21,10 +22,12 @@
     "prepack": "node ../../scripts/package-cli.mjs --build"
   },
   "dependencies": {
-    "commander": "15.0.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "bplist-parser": "0.5.0",
+    "commander": "15.0.0",
     "plist": "5.0.0",
     "qrcode": "1.5.4",
-    "yauzl": "3.4.0"
+    "yauzl": "3.4.0",
+    "zod": "4.6.5"
   }
 }

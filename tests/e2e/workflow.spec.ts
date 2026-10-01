@@ -127,6 +127,8 @@ test('browser login, upload, search, share and mobile installation page', async 
   await page.getByRole('button', { name: 'CLI 与集成' }).click();
   await page.getByRole('tab', { name: 'Xcode 导出' }).click();
   await expect(page.getByText('从 Archive 到安装链接')).toBeVisible();
+  await page.getByRole('tab', { name: 'Agent / MCP' }).click();
+  await expect(page.getByRole('heading', { name: '由 Agent 独立启动 MCP' })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(sharePath);
   await expect(page.getByRole('link', { name: '安装到 iPhone / iPad' })).toHaveAttribute(

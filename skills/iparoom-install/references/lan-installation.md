@@ -14,7 +14,7 @@ CLI 的 Node TLS 信任可通过 `NODE_EXTRA_CA_CERTS=/path/root.crt` 配置。�
 
 ## 使用仓库的 Caddy 配置
 
-仅在用户选择 Docker/常驻服务且仓库存在这些文件时使用。`.env` 设置 `IPAROOM_ADMIN_TOKEN` 和真实 `IPAROOM_LAN_HOST`；不要输出该文件中的 Token。根域名设置使用 `IPAROOM_BASE_URL`，旧名 `IPAROOM_PUBLIC_URL` 仅为兼容，不代表公网。
+仅在用户选择 Docker/常驻服务且仓库存在这些文件时使用。`.env` 设置 `IPAROOM_ADMIN_TOKEN` 和设备可解析的 `IPAROOM_HOSTNAME`；`IPAROOM_LAN_HOST` 默认 `0.0.0.0`，可限制到本机 IPv4；不要输出该文件中的 Token。根域名设置使用 `IPAROOM_BASE_URL`，旧名 `IPAROOM_PUBLIC_URL` 仅为兼容，不代表公网。
 
 ```sh
 docker compose -f compose.yaml -f compose.https.yaml up -d --build
@@ -23,9 +23,9 @@ docker compose -f compose.yaml -f compose.https.yaml cp \
   caddy:/data/caddy/pki/authorities/local/root.crt ./certs/iparoom-root.crt
 ```
 
-Caddy 启动并生成证书后再复制根证书。overlay 以本地 CA 签发，将入口设为 `https://<内网IP>:8443`，不公开后端 HTTP 端口；要求 Docker Compose 支持 `!reset`（2.24.4+）。环境只有独立 `docker-compose` 命令时可用其等价形式。已有反代时优先使用它，不重复启动另一套。
+Caddy 启动并生成证书后再复制根证书。overlay 以本地 CA 签发，将入口设为 `https://<IPAROOM_HOSTNAME>:8443`，不公开后端 HTTP 端口；要求 Docker Compose 支持 `!reset`（2.24.4+）。环境只有独立 `docker-compose` 命令时可用其等价形式。已有反代时优先使用它，不重复启动另一套。
 
-不要把 Caddy 数据卷中的证书私钥提取给直接文件命令；常驻服务可以用 `iparoom upload`。直接模式的 `--cert/--key` 需要用户/项目提供的服务端证书，搭配匹配 SAN 的 `--host/--port`。
+不要把 Caddy 数据卷中的证书私钥提取给直接文件命令；常驻服务可以用 `iparoom upload`。直接模式的 `--cert/--key` 需要用户/项目提供的服务端证书，用匹配 SAN 的 `--hostname` 配置访问域名，用 `--host/--port` 配置监听。
 
 ## 签名与排障
 

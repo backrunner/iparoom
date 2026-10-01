@@ -1,7 +1,7 @@
 import { networkInterfaces } from 'node:os';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
-import { lanAddress, lanOrigin } from './network.mjs';
+import { listenAddress, lanOrigin, shareHostname } from './network.mjs';
 try {
   try {
     process.loadEnvFile('.env');
@@ -9,14 +9,16 @@ try {
     if (error.code !== 'ENOENT') throw error;
   }
   const dev = process.argv.includes('--dev');
-  const host = lanAddress(networkInterfaces(), process.env.IPAROOM_LAN_HOST);
+  const interfaces = networkInterfaces();
+  const host = listenAddress(interfaces, process.env.IPAROOM_LAN_HOST || undefined);
   const port = Number(process.env.PORT || (dev ? 5173 : 3000));
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('PORT must be between 1 and 65535.');
   const origin = lanOrigin(
     process.env.IPAROOM_BASE_URL || process.env.IPAROOM_PUBLIC_URL,
     host,
-    port
+    port,
+    shareHostname(interfaces, host, process.env.IPAROOM_HOSTNAME)
   );
   const maxBytes = Number(process.env.IPAROOM_MAX_UPLOAD_BYTES || 1073741824);
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)

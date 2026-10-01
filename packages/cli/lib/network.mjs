@@ -24,7 +24,46 @@ export function lanAddress(interfaces, preferred) {
   }
   return '127.0.0.1';
 }
-export function lanOrigin(configured, host, port) {
+export function listenAddress(interfaces, preferred = '0.0.0.0') {
+  if (preferred === '0.0.0.0' || preferred === '127.0.0.1') return preferred;
+  if (
+    isIP(preferred) !== 4 ||
+    !Object.values(interfaces)
+      .flat()
+      .some((item) => item?.address === preferred)
+  )
+    throw new Error('--host / IPAROOM_LAN_HOST must be 0.0.0.0 or a local IPv4 address.');
+  return preferred;
+}
+export function hostname(value) {
+  const url = new URL(`http://${value}`);
+  if (
+    url.hostname.toLowerCase() !== value.toLowerCase() ||
+    url.port ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash ||
+    ['0.0.0.0', '[::]'].includes(url.hostname)
+  )
+    throw new Error(
+      'Hostname must be a DNS name or IP address, without a scheme, port or path; wildcard addresses cannot appear in links.'
+    );
+  if (
+    !isIP(url.hostname.replace(/^\[|\]$/g, '')) &&
+    (url.hostname.length > 253 ||
+      !url.hostname
+        .split('.')
+        .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label)))
+  )
+    throw new Error('Invalid hostname.');
+  return url.hostname;
+}
+export function shareHostname(interfaces, bind, configured) {
+  return hostname(configured || (bind === '0.0.0.0' ? lanAddress(interfaces) : bind));
+}
+export function lanOrigin(configured, host, port, advertised) {
   if (configured) {
     const url = new URL(configured);
     if (
@@ -36,7 +75,8 @@ export function lanOrigin(configured, host, port) {
       url.hash
     )
       throw new Error('IPAROOM_BASE_URL must be an HTTP(S) origin without a path or credentials.');
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return url.origin;
+    hostname(url.hostname);
+    return url.origin;
   }
-  return `http://${host}:${port}`;
+  return `http://${hostname(advertised || (host === '0.0.0.0' ? '127.0.0.1' : host))}:${port}`;
 }

@@ -39,3 +39,7 @@ jobs:
           "$RUNNER_TEMP/iparoom-package/node_modules/.bin/iparoom" --version
           "$RUNNER_TEMP/iparoom-package/node_modules/.bin/iparoom" skill install --path "$RUNNER_TEMP/skills" --json
           npm audit --prefix "$RUNNER_TEMP/iparoom-package" --omit=dev
+      - name: Verify packaged MCP tools and IPA delivery
+        env:
+          IPAROOM_TEST_MCP_BIN: ${{ runner.temp }}/iparoom-package/node_modules/iparoom-cli/bin/iparoom-mcp.mjs
+        run: pnpm exec playwright test tests/e2e/mcp.spec.ts

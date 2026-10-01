@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { launch } from '../lib/launch.mjs';
+import { ipaFile } from '../lib/session.mjs';
+import { configureMcpCommand } from '../lib/mcp.mjs';
 import { installSkill } from '../lib/skill.mjs';
 import { fileURLToPath } from 'node:url';
 import { createReadStream } from 'node:fs';
@@ -68,19 +70,6 @@ function output(value, options) {
     );
   } else console.log(JSON.stringify(value, null, 2));
 }
-async function ipaFile(input) {
-  const path = resolve(input);
-  const info = await stat(path);
-  if (info.isDirectory()) {
-    const matches = (await readdir(path)).filter((name) => name.toLowerCase().endsWith('.ipa'));
-    if (matches.length !== 1)
-      throw new Error('Export directory must contain exactly one IPA. Pass an explicit .ipa path.');
-    return ipaFile(join(path, matches[0]));
-  }
-  if (!info.isFile() || !path.toLowerCase().endsWith('.ipa'))
-    throw new Error('Pass a valid .ipa file or export directory.');
-  return { path, size: info.size };
-}
 async function upload(input, options) {
   if ((options.notes || '').length > 2000)
     throw new Error('Release notes must be at most 2000 characters.');
@@ -136,7 +125,8 @@ const program = new Command()
   .description('Share Xcode IPA builds with your test devices')
   .version('0.1.0')
   .argument('[ipa-or-directory]', 'Start a temporary LAN share for an IPA')
-  .option('--host <ipv4>', 'Bind to this local private IPv4 address')
+  .option('--host <ipv4>', 'Listening IPv4 address (default: 0.0.0.0)')
+  .option('--hostname <name>', 'Hostname or IP used in share links and HTTPS certificates')
   .option('--port <number>', 'Listening port (default: an available port)', '0')
   .option('--no-open', 'Do not open a browser automatically')
   .option('--cert <pem>', 'HTTPS certificate chain PEM')
@@ -147,6 +137,18 @@ const program = new Command()
     if (!input) program.help();
     await launch(await ipaFile(input), options);
   });
+configureMcpCommand(program.command('mcp')).action(async (_options, command) => {
+  const { runMcp } = await import('../lib/mcp.mjs');
+  const options = { ...command.opts() };
+  for (const [key, value] of Object.entries(program.opts())) {
+    if (
+      program.getOptionValueSource(key) !== 'default' &&
+      command.getOptionValueSource(key) !== 'cli'
+    )
+      options[key] = value;
+  }
+  await runMcp(options);
+});
 function common(command) {
   return command
     .hook('preAction', (_command, actionCommand) => {

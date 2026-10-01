@@ -3,7 +3,7 @@
   skip_install_trust
 }
 
-https://{$IPAROOM_LAN_HOST} {
+https://{$IPAROOM_HOSTNAME} {
   tls internal
   reverse_proxy iparoom:3000
 }

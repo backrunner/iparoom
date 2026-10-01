@@ -26,7 +26,7 @@ pnpm test:e2e
 pnpm start
 ```
 
-`pnpm dev` and `pnpm start` load `.env`, select a private IPv4 interface (excluding common VPN/container interfaces), bind to that address, and generate device-reachable share URLs. Ports default to 5173 and 3000; override with `PORT`. Use `IPAROOM_LAN_HOST` to select an interface and `IPAROOM_BASE_URL` for a fixed LAN hostname or HTTPS reverse proxy. Without a LAN interface, startup falls back to loopback. Restart after address changes. `IPAROOM_PUBLIC_URL` remains a compatibility alias; it does not require internet hosting.
+`pnpm dev` and `pnpm start` load `.env` and default to `0.0.0.0` (all IPv4 interfaces). Ports default to 5173 and 3000; override with `PORT`. `IPAROOM_LAN_HOST` restricts binding to a local IPv4 address. `IPAROOM_HOSTNAME` selects the DNS name/IP in share links, independently of binding. Otherwise links use an automatically selected private LAN IPv4, or loopback if none is available. `IPAROOM_BASE_URL` overrides the advertised origin for HTTPS reverse proxies. Explicit localhost origins are preserved for local testing; wildcard addresses cannot be used in links. `IPAROOM_PUBLIC_URL` remains a compatibility alias. Restart after address changes.
 
 ## CLI
 
@@ -38,15 +38,15 @@ npm install -g ./dist/iparoom-cli-0.1.0.tgz
 iparoom ./MyApp.ipa
 ```
 
-The direct-file command runs from any directory. It selects a private LAN interface and an available port, imports the IPA, opens its installation page, and prints its URL and terminal QR code. No server setup or login is needed. Press Ctrl+C to stop the temporary server and remove its private IPA copy; the original file stays untouched. Share links stop working when the process exits. This mode ignores project `.env` files and saved remote credentials.
+The direct-file command runs from any directory. It listens on all IPv4 interfaces, selects a private LAN address for links and an available port, imports the IPA, opens its installation page, and prints its URL and terminal QR code. No server setup or login is needed. Press Ctrl+C to stop the temporary server and remove its private IPA copy; the original file stays untouched. Share links stop working when the process exits. This mode ignores project `.env` files and saved remote credentials.
 
 ```sh
 iparoom "/path/App with spaces.ipa" --notes "Regression build"
 iparoom ./exports --no-open --json
-iparoom ./MyApp.ipa --host 192.168.1.10 --port 8443 --cert ./server.crt --key ./server.key
+iparoom ./MyApp.ipa --hostname ipa.lan --port 8443 --cert ./server.crt --key ./server.key
 ```
 
-HTTP provides the page and download. iOS OTA requires a certificate matching the selected IP and trusted by the device. `--host` must belong to this machine; `--port` defaults to 0 for automatic allocation. `--no-open` suppresses browser launch. `--json` prints startup metadata without the terminal QR code. Node.js 24+ is required. Xcode is only required for archive export, not serving exported IPA files. The package has not been published to npm.
+HTTP provides the page and download. iOS OTA requires a certificate matching the advertised hostname and trusted by the device. `--host` defaults to `0.0.0.0`, or can select a local IPv4. `--hostname` sets the advertised DNS name/IP; devices must resolve it to the server. Certificate hostname/key mismatches are rejected; `--port` defaults to 0 for automatic allocation. `--no-open` suppresses browser launch. `--json` prints startup metadata without the terminal QR code. Node.js 24+ is required. Xcode is only required for archive export, not serving exported IPA files. The package has not been published to npm.
 
 To use an existing persistent server:
 
@@ -66,6 +66,49 @@ Login prompts for a hidden token. CI can inject `IPAROOM_SERVER` and `IPAROOM_TO
 
 From source, use `pnpm cli ...`. For `npm link`, first run `pnpm build:cli`. `export` refuses output directories that already contain an IPA to prevent stale uploads; use a fresh export directory. It invokes `xcodebuild -exportArchive`; Xcode manages accounts, certificates, provisioning, and ExportOptions.plist.
 
+## Independent MCP
+
+The package exposes both `iparoom mcp` and the standalone `iparoom-mcp` executable. It starts its own temporary IPA web server, without an existing service or remote login. Default stdio sends only MCP protocol messages to stdout and logs to stderr.
+
+```sh
+iparoom-mcp --hostname ipa.lan --port 8443 --cert ./server.crt --key ./server.key
+```
+
+Generic agent configuration (replace certificate paths):
+
+```json
+{
+  "mcpServers": {
+    "iparoom": {
+      "command": "iparoom-mcp",
+      "args": [
+        "--hostname",
+        "ipa.lan",
+        "--port",
+        "8443",
+        "--cert",
+        "/path/server.crt",
+        "--key",
+        "/path/server.key"
+      ]
+    }
+  }
+}
+```
+
+Tools: `iparoom_create_install_link` accepts a local `path` and optional `notes`; `iparoom_list_builds` lists session builds; `iparoom_get_install_link` reads existing links by `id`; `iparoom_revoke_share` revokes them; `iparoom_server_status` reports endpoints and binding. Results include structured metadata, URLs, SHA-256, and unverified device-installation status. One process supports multiple IPAs. The path belongs to the MCP host, not the remote caller's computer.
+
+`--host` defaults to `0.0.0.0`; `--hostname` sets all advertised page, manifest and IPA URLs. `--port` controls the IPA server and defaults to an available port. EOF, SIGINT or SIGTERM closes the servers and deletes temporary copies; original IPAs are preserved. Keep MCP running while testers use its links. No browser opens automatically.
+
+For LAN clients, use stateless Streamable HTTP:
+
+```sh
+# Inject IPAROOM_MCP_TOKEN (at least 24 characters) through the environment.
+iparoom-mcp --transport http --hostname ipa.lan --mcp-port 3001
+```
+
+Connect to `http://ipa.lan:3001/mcp` with `Authorization: Bearer <IPAROOM_MCP_TOKEN>`. `--mcp-port` is independent of the IPA web port. Supplying `--cert/--key` enables HTTPS on both ports. Host/Origin checks and a 64 KiB JSON limit apply. Stdio requires no MCP token. Independent CLI/MCP modes do not load project `.env` files; pass flags or environment values. HTTP still provides download-only IPA delivery; OTA requires trusted HTTPS and eligible signing.
+
 ## Agent skill
 
 The companion [`iparoom-install`](./skills/iparoom-install/SKILL.md) skill guides agents through Xcode export, direct/persistent LAN distribution, internal HTTPS trust, file integrity checks, and device installation evidence.
@@ -84,7 +127,8 @@ The default destination is `$CODEX_HOME/skills` or `~/.codex/skills`. `--path` s
 For HTTP management and downloads, configure `.env`:
 
 ```dotenv
-IPAROOM_LAN_HOST=192.168.1.10
+IPAROOM_LAN_HOST=0.0.0.0
+IPAROOM_HOSTNAME=192.168.1.10
 IPAROOM_BASE_URL=http://192.168.1.10:3000
 ```
 
@@ -92,7 +136,7 @@ IPAROOM_BASE_URL=http://192.168.1.10:3000
 docker compose up -d --build
 ```
 
-Replace the example IP with an address assigned to the server. The port binds only to that LAN address. No public domain or router port forwarding is needed. HTTP cannot provide iOS OTA installation.
+Replace the example IP with an address assigned to the server. Ports default to all IPv4 interfaces; IPAROOM_LAN_HOST can restrict them. No public domain or router port forwarding is needed. HTTP cannot provide iOS OTA installation.
 
 For device installation, use the supplied Caddy internal CA overlay (Docker Compose 2.24.4+):
 
@@ -103,7 +147,7 @@ docker compose -f compose.yaml -f compose.https.yaml cp \
   caddy:/data/caddy/pki/authorities/local/root.crt ./certs/iparoom-root.crt
 ```
 
-The overlay closes the backend host port and serves `https://192.168.1.10:8443` on the selected LAN interface. It uses `tls internal`, with no public ACME issuer. After Caddy generates its CA, distribute only the root certificate to your test devices through AirDrop, Configurator, or MDM. For manual installation, enable full trust under Settings → General → About → Certificate Trust Settings, then open the HTTPS page in Safari. Keep CA private keys and volumes on the server.
+The overlay closes the backend host port and serves `https://192.168.1.10:8443` on the configured listening address. Set `IPAROOM_HOSTNAME=ipa.lan` to issue a certificate for a DNS name that devices can resolve. It uses `tls internal`, with no public ACME issuer. After Caddy generates its CA, distribute only the root certificate to your test devices through AirDrop, Configurator, or MDM. For manual installation, enable full trust under Settings → General → About → Certificate Trust Settings, then open the HTTPS page in Safari. Keep CA private keys and volumes on the server.
 
 Node CLI clients can trust the CA using `NODE_EXTRA_CA_CERTS=./certs/iparoom-root.crt`. An existing organizational CA/reverse proxy can be used instead. Certificates must match the actual IP or internal hostname; ignoring browser warnings is insufficient.
 
