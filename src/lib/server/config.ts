@@ -1,13 +1,17 @@
 import { env } from '$env/dynamic/private';
 import { resolve } from 'node:path';
 import { error } from '@sveltejs/kit';
+import { effectiveEnvironment } from '../../../packages/cli/lib/config.mjs';
+export const runtimeEnvironment = () => effectiveEnvironment(env);
 export function settings() {
+  const env = runtimeEnvironment();
   const token = env.IPAROOM_ADMIN_TOKEN ?? '';
   const maxBytes = Number(env.IPAROOM_MAX_UPLOAD_BYTES ?? 1073741824);
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) error(503, '上传大小配置无效');
   return { token, maxBytes, dataDir: resolve(env.IPAROOM_DATA_DIR ?? 'data') };
 }
 export function serviceOrigin(fallback: string) {
+  const env = runtimeEnvironment();
   let url: URL;
   try {
     url = new URL(env.IPAROOM_BASE_URL || env.IPAROOM_PUBLIC_URL || fallback);

@@ -91,7 +91,7 @@ test('CLI login, upload, list, info, revoke and delete', async () => {
   await writeFile(path, await fixture());
   const env = {
     ...process.env,
-    IPAROOM_CONFIG_DIR: join(dir, 'config'),
+    IPAROOM_USER_DATA_DIR: dir,
     IPAROOM_TOKEN: token,
     IPAROOM_SERVER: 'http://127.0.0.1:4178'
   };
@@ -99,7 +99,9 @@ test('CLI login, upload, list, info, revoke and delete', async () => {
     run(process.execPath, [resolve('packages/cli/bin/iparoom.mjs'), ...args], { env });
   try {
     await cli('login', '--server', env.IPAROOM_SERVER);
-    expect((await stat(join(dir, 'config/config.json'))).mode & 0o777).toBe(0o600);
+    expect((await stat(join(dir, '.iparoom/config.yaml'))).mode & 0o777).toBe(0o600);
+    env.IPAROOM_SERVER = '';
+    env.IPAROOM_TOKEN = '';
     const { build } = JSON.parse(
       (await cli('upload', path, '--notes', 'CLI 测试', '--json')).stdout
     );
@@ -184,7 +186,7 @@ test('compact layouts support both appearances and keyboard dialog dismissal', a
     await page.getByRole('tab', { name: 'Agent / MCP' }).click();
     await expect(page.getByRole('heading', { name: '独立 MCP' })).toBeVisible();
     const command = await page.getByRole('tabpanel').locator('pre code').textContent();
-    expect(command).toContain('\\\n');
+    expect(command).toBe('iparoom-mcp');
     await page.getByRole('button', { name: '复制命令' }).click();
     await expect(page.getByRole('status')).toHaveText('已复制');
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
@@ -279,5 +281,53 @@ test('Bits controls filter builds, manage links and confirm deletion on mobile',
     expect(errors).toEqual([]);
   } finally {
     await request.delete(`/api/builds/${build.id}`, { headers }).catch(() => {});
+  }
+});
+
+test('a delayed share response cannot overwrite another build dialog', async ({
+  page,
+  request
+}) => {
+  const builds = [];
+  for (let i = 0; i < 2; i++) {
+    const response = await request.post('/api/builds', { headers, data: await fixture() });
+    expect(response.status()).toBe(201);
+    builds.push((await response.json()).build);
+  }
+  let release: () => void = () => {};
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  let fetched: () => void = () => {};
+  const changed = new Promise<void>((done) => {
+    fetched = done;
+  });
+  try {
+    await page.route(`**/api/builds/${builds[0].id}/share`, async (route) => {
+      const response = await route.fetch();
+      fetched();
+      await held;
+      await route.fulfill({ response });
+    });
+    await page.goto('/');
+    await page.getByLabel('管理 Token').fill(token);
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    const rows = page.locator('.build-row');
+    // Builds appear newest first; rotate the older build, then open the newer one.
+    await rows.nth(1).getByRole('button', { name: '分享', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: '链接管理' }).click();
+    await dialog.getByRole('button', { name: '重新生成', exact: true }).click();
+    await changed;
+    await page.keyboard.press('Escape');
+    await rows.nth(0).getByRole('button', { name: '分享', exact: true }).click();
+    await expect(dialog.getByLabel('安装链接', { exact: true })).toHaveValue(builds[1].installUrl);
+    release();
+    await expect(page.getByRole('status')).toHaveText(/新链接已生成/);
+    await expect(dialog.getByLabel('安装链接', { exact: true })).toHaveValue(builds[1].installUrl);
+  } finally {
+    release();
+    await page.unrouteAll({ behavior: 'wait' });
+    for (const build of builds) await request.delete(`/api/builds/${build.id}`, { headers });
   }
 });

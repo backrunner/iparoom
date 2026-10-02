@@ -1,0 +1,35 @@
+# IPA Room: ~/.iparoom/config.yaml
+# IPAROOM_USER_DATA_DIR changes the parent userdata directory, not .iparoom itself.
+# Edit the generated file and restart the corresponding service/CLI/MCP process.
+# Relative paths resolve inside .iparoom. Keep this file private (0600).
+version: 1
+server:
+  host: 0.0.0.0
+  hostname: '' # Empty: Ponte if available, otherwise LAN IPv4.
+  port: 3000
+  devPort: 5173
+  baseUrl: '' # Optional HTTP(S) origin for a reverse proxy.
+  adminToken: '' # Set a random token of at least 24 characters for the dashboard/API.
+  maxUploadBytes: 1073741824
+  bodySizeLimit: '' # Empty: use maxUploadBytes.
+https:
+  enabled: true
+  certificate: '' # Empty certificate/key: use the managed local CA.
+  privateKey: ''
+  caCertificate: '' # Public root for a supplied certificate chain.
+  caPort: 0 # Available port for native sessions; Docker falls back to 8080.
+ponte:
+  enabled: true
+  hostname: '' # Optional explicit Surge identity, e.g. my-mac.sgponte.
+share:
+  port: 0 # Temporary CLI/MCP IPA web port: 0 selects an available port.
+  openBrowser: true
+mcp:
+  transport: stdio
+  port: 3001 # Only for HTTP MCP; 0 selects an available port.
+  token: '' # HTTP MCP requires a separate random token of at least 24 characters.
+client:
+  server: '' # Persistent server used by login/upload/list/etc.
+  token: '' # Login writes this field; logout clears client fields only.
+storage:
+  dataDir: data # SQLite and persistent IPA storage; temporary shares are cleaned up.

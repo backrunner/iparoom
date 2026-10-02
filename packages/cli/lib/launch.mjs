@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import QRCode from 'qrcode';
 import { createShareSession } from './session.mjs';
+import { shareOptions } from './config.mjs';
 function openBrowser(url) {
   const command =
     process.platform === 'darwin'
@@ -16,6 +17,7 @@ function openBrowser(url) {
   });
 }
 export async function launch(file, options) {
+  options = shareOptions(options);
   const abort = new AbortController();
   let session,
     closing,
@@ -53,9 +55,10 @@ export async function launch(file, options) {
     console.error(
       `Sharing on ${session.origin} (listening on ${session.host}:${session.port}). Press Ctrl+C to stop; temporary IPA data will be removed.`
     );
-    if (!session.tls)
+    const status = session.status();
+    if (status.certificateInstallUrl)
       console.error(
-        'HTTP provides the page and download. iOS OTA needs --cert/--key with a certificate trusted by the device.'
+        `Install CA: ${status.certificateInstallUrl}\nCA SHA-256: ${status.caFingerprint}`
       );
     if (options.open !== false) openBrowser(result.build.installUrl);
   } catch (error) {

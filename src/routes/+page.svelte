@@ -4,6 +4,7 @@
   import { Button, Collapsible, Dialog, DropdownMenu, Label, Progress, Tabs } from 'bits-ui';
   import CodeBlock from '$lib/components/CodeBlock.svelte';
   import SigningFilter from '$lib/components/SigningFilter.svelte';
+  import BrandMark from '$lib/components/BrandMark.svelte';
   import {
     Box,
     Upload,
@@ -116,24 +117,39 @@
     qr = '';
     failure = '';
     shareOpen = true;
-    if (build.installUrl) qr = await QRCode.toDataURL(build.installUrl, { width: 200, margin: 1 });
+    if (!build.installUrl) return;
+    try {
+      const image = await QRCode.toDataURL(build.installUrl, { width: 200, margin: 1 });
+      if (shareOpen && selected?.id === build.id && selected.installUrl === build.installUrl)
+        qr = image;
+    } catch {
+      if (shareOpen && selected?.id === build.id) failure = '无法生成二维码，请复制分享链接';
+    }
   }
   async function changeShare(enabled: boolean) {
     if (!selected) return;
+    const id = selected.id;
     busy = true;
     failure = '';
     try {
-      const response = await fetch(`/api/builds/${selected.id}/share`, {
+      const response = await fetch(`/api/builds/${id}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled })
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.message);
-      selected = body.build;
-      qr = enabled ? await QRCode.toDataURL(body.build.installUrl, { width: 200, margin: 1 }) : '';
       await invalidateAll();
       notice = enabled ? '新链接已生成，旧链接已失效' : '分享已撤销';
+      if (shareOpen && selected?.id === id) {
+        selected = body.build;
+        qr = '';
+        if (enabled) {
+          const image = await QRCode.toDataURL(body.build.installUrl, { width: 200, margin: 1 });
+          if (shareOpen && selected?.id === id && selected.installUrl === body.build.installUrl)
+            qr = image;
+        }
+      }
     } catch (cause) {
       failure = cause instanceof Error ? cause.message : '操作失败';
     } finally {
@@ -168,7 +184,7 @@
 <div class="workspace">
   <header class="app-header">
     <div class="header-inner">
-      <a class="brand" href="/"><span class="brand-icon"><Box size={20} /></span>IPA Room</a>
+      <a class="brand" href="/" aria-label="IPA Room 首页"><BrandMark />IPA Room</a>
       <nav class="workspace-nav" aria-label="主要导航">
         <Button.Root
           class={section === 'builds' ? 'active' : ''}
@@ -182,7 +198,9 @@
         >
       </nav>
       <div class="header-actions">
-        <span class="connection"><span class="status-dot"></span>局域网</span>
+        {#if data.certificateInstallUrl}<a class="ca-entry" href={data.certificateInstallUrl}
+            >安装 CA</a
+          >{/if}
         {#if data.admin}<form method="POST" action="?/logout">
             <Button.Root type="submit" class="icon-button" aria-label="退出登录"
               ><LogOut size={17} /></Button.Root
@@ -195,7 +213,6 @@
     {#if !data.admin && section === 'builds'}
       <div class="login-layout">
         <form class="login-panel" method="POST" action="?/login" use:enhance>
-          <div class="login-symbol"><Box size={26} /></div>
           <h1>登录构建仓库</h1>
           <Label.Root for="token">管理 Token</Label.Root>
           <input
@@ -215,7 +232,9 @@
               ><Collapsible.Trigger class="disclosure"
                 >配置方法 <ChevronDown size={15} /></Collapsible.Trigger
               ><Collapsible.Content class="help-content">
-                <p>在 .env 中设置至少 24 字符的 IPAROOM_ADMIN_TOKEN，重新启动服务。</p>
+                <p>
+                  在 ~/.iparoom/config.yaml 中设置至少 24 字符的 server.adminToken，重新启动服务。
+                </p>
               </Collapsible.Content></Collapsible.Root
             >
           {/if}
@@ -226,7 +245,7 @@
         <div>
           <h1>构建仓库</h1>
           <p class="repository-summary">
-            {data.builds.length} 个构建<span aria-hidden="true">/</span>{sizeLabel(bytes)}
+            {data.builds.length} 个构建，共 {sizeLabel(bytes)}
           </p>
         </div>
         <Button.Root
@@ -273,7 +292,7 @@
             {#each builds as build (build.id)}
               <article class="build-row">
                 <div class="build-app">
-                  <div class="app-icon" data-tone={build.name.charCodeAt(0) % 4}>
+                  <div class="app-icon" aria-hidden="true">
                     {build.name.slice(0, 1).toUpperCase()}
                   </div>
                   <div class="build-info">
@@ -285,7 +304,7 @@
                   <strong>{build.version}</strong><span>Build {build.buildNumber}</span>
                 </div>
                 <div class="build-signing">
-                  <span class="badge">{signingLabels[build.signing]}</span>
+                  <span class="signing-label">{signingLabels[build.signing]}</span>
                 </div>
                 <span class="build-size">{sizeLabel(build.size)}</span>
                 <time class="build-date" datetime={build.createdAt}
@@ -336,7 +355,11 @@
         {/if}
       </div>
     {:else}
-      <div class="page-heading"><h1>CLI 与集成</h1></div>
+      <div class="page-heading">
+        <div>
+          <h1>CLI 与集成</h1>
+        </div>
+      </div>
       <div class="integration-panel">
         <Tabs.Root value="local">
           <Tabs.List class="tabs" aria-label="CLI 使用说明"
@@ -358,7 +381,7 @@
                   code={'iparoom ./MyApp.ipa --hostname ipa.lan --port 8443 \\\n  --cert ./server.crt --key ./server.key'}
                 />
                 <p>
-                  默认监听 0.0.0.0。hostname 需能被设备解析，证书需匹配该域名并被设备信任。按 Ctrl+C
+                  默认生成本机 CA 并启用 HTTPS；右上角可安装 CA。hostname 需能被设备解析。按 Ctrl+C
                   停止临时分享。
                 </p>
               </Collapsible.Content></Collapsible.Root
@@ -381,9 +404,7 @@ iparoom upload ./MyApp.ipa --notes "修复登录问题"`}
           >
           <Tabs.Content value="mcp" class="integration-content"
             ><h2>独立 MCP</h2>
-            <CodeBlock
-              code={'iparoom-mcp --hostname ipa.lan --port 8443 \\\n  --cert ./server.crt --key ./server.key'}
-            />
+            <CodeBlock code={'iparoom-mcp'} />
             <p>使用 stdio；工具 iparoom_create_install_link 接收 path 和 notes。</p></Tabs.Content
           >
           <Tabs.Content value="ci" class="integration-content"
@@ -395,22 +416,6 @@ iparoom upload ./exports --json`}
             <p>通过 CI Secret 注入 IPAROOM_TOKEN。</p></Tabs.Content
           >
         </Tabs.Root>
-        <Collapsible.Root class="help-section integration-help"
-          ><Collapsible.Trigger class="disclosure"
-            >安装要求 <ChevronDown size={15} /></Collapsible.Trigger
-          ><Collapsible.Content class="help-content">
-            <p>
-              在线安装需要受信任的 HTTPS 与有效签名。开发签名 / Ad Hoc 要包含设备 UDID；App Store
-              构建使用 TestFlight 分发。
-            </p>
-            <a
-              class="text-link"
-              href="https://support.apple.com/en-gb/guide/deployment/depce7cefc4d/1/web"
-              target="_blank"
-              rel="noreferrer">Apple 分发说明 <ArrowUpRight size={14} /></a
-            >
-          </Collapsible.Content></Collapsible.Root
-        >
       </div>
     {/if}
   </main>
@@ -535,6 +540,12 @@ iparoom upload ./exports --json`}
   <Dialog.Portal
     ><Dialog.Overlay class="dialog-overlay" /><Dialog.Content
       class="dialog"
+      onEscapeKeydown={(event) => {
+        if (busy) event.preventDefault();
+      }}
+      onInteractOutside={(event) => {
+        if (busy) event.preventDefault();
+      }}
       onCloseAutoFocus={(event) => {
         const target = deleteReturnFocus?.isConnected ? deleteReturnFocus : uploadTrigger;
         if (target) {

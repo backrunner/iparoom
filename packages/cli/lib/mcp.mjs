@@ -7,6 +7,8 @@ import { createServer as createHttpsServer } from 'node:https';
 import { timingSafeEqual } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { createShareSession, portNumber } from './session.mjs';
+import { shareOptions, effectiveEnvironment } from './config.mjs';
+import { mcpAddresses } from './network.mjs';
 
 export function configureMcpCommand(command) {
   return command
@@ -17,14 +19,19 @@ export function configureMcpCommand(command) {
     .option('--port <number>', 'IPA web server port (default: available port)', '0')
     .option('--mcp-port <number>', 'HTTP MCP port', '3001')
     .option('--cert <pem>', 'HTTPS certificate chain PEM')
-    .option('--key <pem>', 'HTTPS private key PEM');
+    .option('--key <pem>', 'HTTPS private key PEM')
+    .option('--ca <pem>', 'Public root CA for a supplied certificate chain')
+    .option('--ca-port <number>', 'Certificate-only HTTP bootstrap port (default: available port)')
+    .option('--http', 'Use HTTP instead of managed HTTPS')
+    .option('--ponte-hostname <name>', 'Surge Ponte domain, e.g. mymac.sgponte')
+    .option('--no-ponte', 'Disable automatic Ponte hostname selection');
 }
 function tools(session, status) {
   const server = new McpServer(
     { name: 'iparoom', version: '0.1.0' },
     {
       instructions:
-        'Create LAN IPA distribution links from local Xcode-exported files. Links live only while this MCP process runs. HTTP is download-only; HTTPS OTA still requires device trust and eligible signing. Delivery never proves device installation.'
+        'Create LAN IPA distribution links from local Xcode-exported files. Links live only while this MCP process runs. HTTPS with a persistent local CA is the default. Return certificateInstallUrl and caFingerprint for initial device trust. HTTP is download-only; OTA still requires device trust and eligible signing. Delivery never proves device installation.'
     }
   );
   const run = (callback) => async (args, extra) => {
@@ -109,10 +116,11 @@ function tools(session, status) {
   return server;
 }
 export async function runMcp(options) {
+  options = shareOptions(options);
   if (!['stdio', 'http'].includes(options.transport))
     throw new Error('--transport must be stdio or http.');
   const httpPort = portNumber(options.mcpPort ?? 3001, '--mcp-port');
-  const token = process.env.IPAROOM_MCP_TOKEN || '';
+  const token = effectiveEnvironment().IPAROOM_MCP_TOKEN || '';
   if (options.transport === 'http' && token.length < 24)
     throw new Error('HTTP MCP requires IPAROOM_MCP_TOKEN with at least 24 characters.');
   let session,
@@ -153,6 +161,11 @@ export async function runMcp(options) {
   try {
     session = await opening;
     if (stopped) return;
+    const certificates = session.status();
+    if (certificates.certificateInstallUrl)
+      console.error(
+        `Install CA: ${certificates.certificateInstallUrl}\nCA SHA-256: ${certificates.caFingerprint}`
+      );
     if (options.transport === 'stdio') {
       const server = tools(session, status);
       servers.add(server);
@@ -187,14 +200,12 @@ export async function runMcp(options) {
         expected = Buffer.from(token);
       if (provided.length !== expected.length || !timingSafeEqual(provided, expected))
         return reject(res, 401, 'A valid MCP Bearer token is required.');
-      const allowedHosts = [...allowedNames].map(
-        (name) =>
-          `${name.includes(':') && !name.startsWith('[') ? `[${name}]` : name}:${listener.address().port}`
+      const { allowedHosts, allowedOrigins } = mcpAddresses(
+        allowedNames,
+        listener.address().port,
+        Boolean(session.tls)
       );
       if (!allowedHosts.includes(req.headers.host)) return reject(res, 403, 'Invalid Host.');
-      const allowedOrigins = allowedHosts.map(
-        (host) => `${session.tls ? 'https' : 'http'}://${host}`
-      );
       if (req.headers.origin && !allowedOrigins.includes(req.headers.origin))
         return reject(res, 403, 'Invalid Origin.');
       if (req.url !== '/mcp') return reject(res, 404, 'Use /mcp.');

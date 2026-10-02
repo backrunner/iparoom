@@ -1,9 +1,25 @@
 {
-  auto_https disable_redirects
-  skip_install_trust
+	auto_https disable_redirects
+	skip_install_trust
 }
 
 https://{$IPAROOM_HOSTNAME} {
-  tls internal
-  reverse_proxy iparoom:3000
+	tls internal
+	reverse_proxy iparoom:3000
+}
+
+# Bootstrap exposes only public CA assets, never the management API or IPA files.
+:8080 {
+	handle /root.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		file_server
+	}
+	@certificates path /ca /ca/*
+	handle @certificates {
+		reverse_proxy iparoom:3000
+	}
+	handle {
+		respond "Not found" 404
+	}
 }

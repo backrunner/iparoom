@@ -1,15 +1,20 @@
+# Use pnpm docker: settings and bind mounts are derived from ~/.iparoom/config.yaml.
 services:
   iparoom:
     build: .
     restart: unless-stopped
+    user: '${IPAROOM_COMPOSE_UID:-1000}:${IPAROOM_COMPOSE_GID:-1000}'
     ports:
-      - '${IPAROOM_LAN_HOST:-0.0.0.0}:3000:3000'
+      - '${IPAROOM_COMPOSE_HOST:-0.0.0.0}:${IPAROOM_COMPOSE_PORT:-3000}:3000'
     environment:
-      IPAROOM_ADMIN_TOKEN: ${IPAROOM_ADMIN_TOKEN:?Set IPAROOM_ADMIN_TOKEN}
-      IPAROOM_BASE_URL: ${IPAROOM_BASE_URL:-http://${IPAROOM_HOSTNAME:?Set a device-reachable hostname or LAN IP}:3000}
-      ORIGIN: ${IPAROOM_BASE_URL:-http://${IPAROOM_HOSTNAME:?Set a device-reachable hostname or LAN IP}:3000}
-      BODY_SIZE_LIMIT: 1G
+      IPAROOM_BASE_URL: ${IPAROOM_COMPOSE_ORIGIN:?Run pnpm docker with config.yaml}
+      ORIGIN: ${IPAROOM_COMPOSE_ORIGIN}
+      IPAROOM_DATA_DIR: /home/node/.iparoom/data
+      BODY_SIZE_LIMIT: ${IPAROOM_COMPOSE_BODY_LIMIT:-1073741824}
+      IPAROOM_ADMIN_TOKEN:
+      IPAROOM_MAX_UPLOAD_BYTES:
+      IPAROOM_CA_CERT: ''
     volumes:
-      - iparoom-data:/app/data
-volumes:
-  iparoom-data:
+      - '${IPAROOM_COMPOSE_ROOT}/docker/app:/home/node/.iparoom'
+      - '${IPAROOM_COMPOSE_CONFIG}:/home/node/.iparoom/config.yaml:ro'
+      - '${IPAROOM_COMPOSE_DATA}:/home/node/.iparoom/data'

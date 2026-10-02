@@ -53,9 +53,10 @@ export function hostname(value) {
   if (
     !isIP(url.hostname.replace(/^\[|\]$/g, '')) &&
     (url.hostname.length > 253 ||
-      !url.hostname
-        .split('.')
-        .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label)))
+      (!/^[a-z0-9_-]{1,63}\.sgponte$/i.test(url.hostname) &&
+        !url.hostname
+          .split('.')
+          .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))))
   )
     throw new Error('Invalid hostname.');
   return url.hostname;
@@ -79,4 +80,17 @@ export function lanOrigin(configured, host, port, advertised) {
     return url.origin;
   }
   return `http://${hostname(advertised || (host === '0.0.0.0' ? '127.0.0.1' : host))}:${port}`;
+}
+export function mcpAddresses(names, port, https) {
+  const scheme = https ? 'https' : 'http';
+  const allowedHosts = [
+    ...new Set(
+      [...names].flatMap((name) => {
+        const host = name.includes(':') && !name.startsWith('[') ? `[${name}]` : name;
+        return port === (https ? 443 : 80) ? [host, `${host}:${port}`] : [`${host}:${port}`];
+      })
+    )
+  ];
+  const allowedOrigins = [...new Set(allowedHosts.map((host) => `${scheme}://${host}`))];
+  return { allowedHosts, allowedOrigins };
 }

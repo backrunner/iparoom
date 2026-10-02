@@ -2,21 +2,19 @@ services:
   iparoom:
     ports: !reset []
     environment:
-      IPAROOM_BASE_URL: https://${IPAROOM_HOSTNAME:?Set a certificate hostname or LAN IP}:8443
-      ORIGIN: https://${IPAROOM_HOSTNAME:?Set a certificate hostname or LAN IP}:8443
+      IPAROOM_CA_ROOT_URL: http://caddy:8080/root.crt
+      IPAROOM_CA_INSTALL_URL: http://${IPAROOM_COMPOSE_HOSTNAME}:${IPAROOM_COMPOSE_CA_PORT}/ca
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     depends_on:
       - iparoom
     ports:
-      - '${IPAROOM_LAN_HOST:-0.0.0.0}:8443:443'
+      - '${IPAROOM_COMPOSE_HOST}:${IPAROOM_COMPOSE_PORT}:443'
+      - '${IPAROOM_COMPOSE_HOST}:${IPAROOM_COMPOSE_CA_PORT}:8080'
     environment:
-      IPAROOM_HOSTNAME: ${IPAROOM_HOSTNAME}
+      IPAROOM_HOSTNAME: ${IPAROOM_COMPOSE_HOSTNAME}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-volumes:
-  caddy-data:
-  caddy-config:
+      - '${IPAROOM_COMPOSE_ROOT}/caddy/data:/data'
+      - '${IPAROOM_COMPOSE_ROOT}/caddy/config:/config'

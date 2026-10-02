@@ -9,7 +9,7 @@ description: 使用 IPA Room 将 Xcode 导出的 IPA 分发到局域网 iPhone/i
 
 ## 选择入口
 
-先检查 `node --version`、`iparoom --help`、项目构建/签名约定及用户提供的 IPA、Archive、设备和内网服务信息。CLI 需要 Node.js 24+。不要扫描或显示 Token、证书私钥、Keychain 密钥；使用已配置的凭据与签名机制。
+先检查 `node --version`、`iparoom --help`、项目构建/签名约定及用户提供的 IPA、Archive、设备和内网服务信息。CLI 需要 Node.js 24+，默认自动签发 HTTPS 需要 OpenSSL。不要扫描或显示 Token、证书私钥、Keychain 密钥；使用已配置的凭据与签名机制。
 
 - **不使用网页 HTTPS、且有可访问设备的 Mac：** 读取 [设备连接安装](references/nonhttps-installation.md)，使用 HTTP 交付 IPA 后通过现有 Apple 工具安装；IPA Room 的自动设备安装命令尚未实现，不杜撰 `iparoom install`。
 - **已连接 IPA Room MCP 或需要独立 MCP：** 使用 `iparoom_create_install_link`；读取 [MCP 与 hostname](references/mcp.md)，理解会话寿命、服务主机文件路径及 HTTP MCP 认证。
@@ -29,16 +29,16 @@ iparoom "/absolute/path/App.ipa" --json --no-open
 
 在受管理的长运行终端会话中启动，记录进程/会话和启动 JSON；等待完整 JSON 后再使用其中的 `build.installUrl`、`downloadUrl`、`manifestUrl`、`otaUrl`、版本、构建号、签名提示、SHA-256。不要杜撰端口、Token 或分享路径，也不要把二维码输出当作 JSON。
 
-若用户要自动打开桌面页面，可省略 `--no-open`。CLI 默认监听 `0.0.0.0`（所有 IPv4 网卡），自动选择私有 IPv4 作为链接地址并分配空闲端口。用 `--host <本机 IPv4>` 限制监听；用 `--hostname <设备可解析的域名>` 指定链接和证书域名；需要固定端口时用 `--port`。不要把 `0.0.0.0` 当作访问链接。直接文件模式不读取当前项目 `.env`，也不使用远程 CLI 登录；不要通过登录解决它的启动问题。
+若用户要自动打开桌面页面，可省略 `--no-open`。CLI 默认监听 `0.0.0.0`（所有 IPv4 网卡），优先使用可靠报告或明确配置的 Ponte 域名，否则选择私有 IPv4 作为链接地址并分配空闲端口。用 `--host <本机 IPv4>` 限制监听；用 `--hostname <设备可解析的域名>` 指定链接和证书域名；需要固定端口时用 `--port`。不要把 `0.0.0.0` 当作访问链接。网页、CLI 与 MCP 共用 userdata 下的 `.iparoom/config.yaml`（默认 `~/.iparoom`）；用 `iparoom config` 定位，用户可直接编辑后重启，`IPAROOM_USER_DATA_DIR` 指定父目录。直接文件模式不读取当前项目 `.env`，也不使用远程 CLI 登录；不要通过登录解决它的启动问题。
 
-**HTTP 只能交付页面和下载，不能完成 iOS OTA。** 用户要求在线安装时，优先使用已有、与访问 hostname 匹配且被设备信任的证书：
+**默认由持久化本机 CA 签发 HTTPS。** 读取启动 JSON 的 `certificateInstallUrl`、`caCertificatePath`、`caFingerprint`；设备首次通过 HTTP 证书专用入口下载 `.mobileconfig`，安装后开启根证书完全信任，校对指纹。CA 不随临时 IPA 删除，不自动修改系统或设备信任。校验脚本的 `--ca` 使用 JSON 中的公开根证书路径。`--http` 显式选择仅下载的 HTTP。已有、与访问 hostname 匹配且被设备信任的证书可继续使用：
 
 ```sh
 iparoom "/absolute/path/App.ipa" --hostname ipa.lan --port 8443 \
-  --cert "/path/server.crt" --key "/path/server.key" --json --no-open
+  --cert "/path/server.crt" --key "/path/server.key" --ca "/path/root.crt" --json --no-open
 ```
 
-证书示例路径不是预置资产。用户指定 Safari OTA 且缺少受信任的内网 HTTPS 时，先完成 IPA/页面准备，读取 [内网证书与设备操作](references/lan-installation.md)，明确需要的证书或设备信任步骤，不把 HTTP 下载链接称为可在线安装。不要使用 `curl -k` 或关闭 TLS 校验来证明就绪。
+证书示例路径不是预置资产。缺少设备信任时先准备 CA 入口，读取 [内网证书与设备操作](references/lan-installation.md)，明确需要的证书或设备信任步骤，不把 HTTP 下载链接称为可在线安装。不要使用 `curl -k` 或关闭 TLS 校验来证明就绪。
 
 ## 常驻服务
 

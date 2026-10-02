@@ -71,3 +71,29 @@ describe('separate listening and advertised hostname', () => {
     expect(() => lanOrigin('http://0.0.0.0:3000', '0.0.0.0', 3000)).toThrow();
   });
 });
+
+describe('MCP Host and Origin protection', () => {
+  it('accepts URL-normalized default-port hosts without accepting unconfigured names or ports', async () => {
+    const { mcpAddresses } = await import('../packages/cli/lib/network.mjs');
+    for (const [scheme, port] of [
+      ['https', 443],
+      ['http', 80]
+    ] as const) {
+      const { allowedHosts, allowedOrigins } = mcpAddresses(
+        ['ipa.lan', '::1'],
+        port,
+        scheme === 'https'
+      );
+      for (const name of ['ipa.lan', '[::1]']) {
+        const url = new URL(`${scheme}://${name}:${port}/mcp`);
+        expect(allowedHosts).toContain(url.host);
+        expect(allowedOrigins).toContain(url.origin);
+      }
+      expect(allowedHosts).not.toContain('evil.lan');
+      expect(allowedHosts).not.toContain('ipa.lan:3001');
+    }
+    const custom = mcpAddresses(['ipa.lan'], 3001, true);
+    expect(custom.allowedHosts).not.toContain('ipa.lan');
+    expect(custom.allowedOrigins).not.toContain('https://ipa.lan');
+  });
+});

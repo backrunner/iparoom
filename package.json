@@ -1,6 +1,11 @@
 {
   "name": "iparoom",
   "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/backrunner/iparoom.git"
+  },
   "private": true,
   "type": "module",
   "engines": {
@@ -21,7 +26,8 @@
     "format:check": "prettier --check .",
     "build:cli": "pnpm build && node scripts/package-cli.mjs",
     "pack:cli": "pnpm --filter iparoom-cli pack --out dist/iparoom-cli-0.1.0.tgz",
-    "skill:install": "node scripts/install-skill.mjs"
+    "skill:install": "node scripts/install-skill.mjs",
+    "docker": "node scripts/compose.mjs"
   },
   "dependencies": {
     "@lucide/svelte": "1.49.0",
@@ -31,6 +37,7 @@
     "plist": "5.0.0",
     "qrcode": "1.5.4",
     "svelte": "5.57.1",
+    "yaml": "2.9.1",
     "yauzl": "3.4.0"
   },
   "devDependencies": {

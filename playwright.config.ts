@@ -12,6 +12,7 @@ export default defineConfig({
     url: 'http://127.0.0.1:4178',
     reuseExistingServer: false,
     env: {
+      IPAROOM_USER_DATA_DIR: mkdtempSync(join(tmpdir(), 'iparoom-e2e-userdata-')),
       HOST: '127.0.0.1',
       PORT: '4178',
       ORIGIN: 'http://127.0.0.1:4178',

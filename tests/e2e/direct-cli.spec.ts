@@ -7,13 +7,19 @@ import { tmpdir } from 'node:os';
 import { get } from 'node:https';
 import { createServer } from 'node:net';
 import { fixture } from '../fixture';
+import { tlsFetch } from './tls-fetch';
+import { X509Certificate } from 'node:crypto';
+import * as plist from 'plist';
+import { expectInstallPage } from './install-page';
+import { loadUserConfig } from '../../packages/cli/lib/config.mjs';
 const exec = promisify(execFile);
-async function start(args: string[], cwd: string, bind = '127.0.0.1') {
+async function start(args: string[], cwd: string, bind = '127.0.0.1', managed = false) {
   const child = spawn(
     process.execPath,
     [
       resolve('packages/cli/bin/iparoom.mjs'),
       ...args,
+      ...(!args.includes('--cert') && !managed ? ['--http'] : []),
       ...(bind === 'default' ? [] : ['--host', bind]),
       '--json',
       '--no-open'
@@ -22,6 +28,7 @@ async function start(args: string[], cwd: string, bind = '127.0.0.1') {
       cwd,
       env: {
         ...process.env,
+        IPAROOM_USER_DATA_DIR: cwd,
         IPAROOM_LAN_HOST: '',
         IPAROOM_HOSTNAME: '',
         IPAROOM_SERVER: 'http://wrong-server.invalid',
@@ -74,6 +81,7 @@ async function stop(child: ChildProcess) {
   });
 }
 test('direct IPA invocation starts an isolated page, serves bytes and stops cleanly', async ({
+  browser,
   page,
   request
 }) => {
@@ -90,6 +98,7 @@ test('direct IPA invocation starts an isolated page, serves bytes and stops clea
     expect(result.build.installUrl).toContain(result.serverUrl);
     expect(result.build.otaUrl).toBeNull();
     expect((await request.get(`${result.serverUrl}/api/builds`)).status()).toBe(401);
+    await expectInstallPage(browser, result.build, 'cli-http');
     await page.goto(result.build.installUrl);
     await expect(page.getByRole('heading', { name: '测试 & Demo' })).toBeVisible();
     await expect(page.getByText('直接启动测试')).toBeVisible();
@@ -137,7 +146,7 @@ test('direct IPA invocation starts an isolated page, serves bytes and stops clea
       exec(
         process.execPath,
         [resolve('packages/cli/bin/iparoom.mjs'), invalid, '--host', '127.0.0.1', '--no-open'],
-        { cwd: dir }
+        { cwd: dir, env: { ...process.env, IPAROOM_USER_DATA_DIR: dir } }
       )
     ).rejects.toThrow('IPA');
     const second = await start([path], dir);
@@ -149,7 +158,9 @@ test('direct IPA invocation starts an isolated page, serves bytes and stops clea
     await rm(dir, { recursive: true, force: true });
   }
 });
-test('direct HTTPS invocation serves an OTA manifest with the supplied certificate', async () => {
+test('direct HTTPS invocation serves an OTA manifest with the supplied certificate', async ({
+  browser
+}) => {
   const dir = await mkdtemp(join(tmpdir(), 'iparoom-tls-test-'));
   let child: ChildProcess | undefined;
   try {
@@ -179,6 +190,7 @@ test('direct HTTPS invocation serves an OTA manifest with the supplied certifica
     const result = running.result;
     expect(result.serverUrl).toMatch(/^https:/);
     expect(result.build.otaUrl).toContain('itms-services:');
+    await expectInstallPage(browser, result.build, 'cli-https', true);
     const ca = await readFile(cert);
     const xml = await new Promise<string>((resolveXml, reject) => {
       get(result.build.manifestUrl, { ca }, (res) => {
@@ -235,11 +247,14 @@ test('stopping during IPA import drains upload work and removes temporary data',
     `
     import fs from 'node:fs';
     import { syncBuiltinESMExports } from 'node:module';
+    import { Transform } from 'node:stream';
     const original = fs.createReadStream;
     fs.createReadStream = (path, options) => {
       const stream = original(path, { ...options, highWaterMark: 1024 });
       stream.once('data', () => fs.writeFileSync(${JSON.stringify(marker)}, 'started'));
-      return stream;
+      const slow = new Transform({ transform(chunk, _encoding, callback) { setTimeout(() => callback(null, chunk), 20); } });
+      slow.once('close', () => stream.destroy());
+      return stream.pipe(slow);
     };
     syncBuiltinESMExports();
   `
@@ -254,12 +269,13 @@ test('stopping during IPA import drains upload work and removes temporary data',
       ipa,
       '--host',
       '127.0.0.1',
+      '--http',
       '--json',
       '--no-open'
     ],
     {
       cwd: dir,
-      env: { ...process.env, IPAROOM_MAX_UPLOAD_BYTES: '16777216' },
+      env: { ...process.env, IPAROOM_USER_DATA_DIR: dir, IPAROOM_MAX_UPLOAD_BYTES: '16777216' },
       stdio: ['ignore', 'pipe', 'pipe']
     }
   );
@@ -300,8 +316,10 @@ test('persistent startup accepts IPA files larger than the adapter default witho
   const child = spawn(process.execPath, [resolve('scripts/serve.mjs')], {
     env: {
       ...process.env,
+      IPAROOM_USER_DATA_DIR: dir,
       PORT: String(port),
       IPAROOM_LAN_HOST: '127.0.0.1',
+      IPAROOM_HTTPS: '0',
       IPAROOM_BASE_URL: '',
       IPAROOM_PUBLIC_URL: '',
       IPAROOM_ADMIN_TOKEN: token,
@@ -372,6 +390,133 @@ test('direct CLI defaults to all interfaces and uses an explicit hostname in lin
     expect((await request.get(local.toString())).status()).toBe(200);
   } finally {
     if (child) await stop(child);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('default CLI HTTPS has a persistent CA, public bootstrap and a verified manifest/download chain', async ({
+  browser,
+  request
+}) => {
+  const dir = await mkdtemp(join(tmpdir(), 'iparoom-managed-cli-'));
+  let child: ChildProcess | undefined;
+  try {
+    const path = join(dir, 'App.ipa');
+    const bytes = await fixture();
+    await writeFile(path, bytes);
+    const first = await start([path], dir, '127.0.0.1', true);
+    child = first.child;
+    const result = first.result;
+    expect(result).toMatchObject({
+      https: true,
+      managedCertificates: true,
+      deviceInstallation: 'not-verified'
+    });
+    expect(result.configPath).toBe(join(dir, '.iparoom/config.yaml'));
+    expect(result.caCertificatePath).toBe(join(dir, '.iparoom/certificates/root.crt'));
+    const root = await readFile(result.caCertificatePath);
+    expect(new X509Certificate(root).fingerprint256).toBe(result.caFingerprint);
+    const bootstrap = new URL(result.certificateInstallUrl).origin;
+    expect((await request.get(result.certificateInstallUrl)).status()).toBe(200);
+    const profile = await request.get(`${bootstrap}/ca/iparoom.mobileconfig`);
+    expect(profile.headers()['content-type']).toBe('application/x-apple-aspen-config');
+    expect(
+      Buffer.from((plist.parse(await profile.text()) as any).PayloadContent[0].PayloadContent)
+    ).toEqual(new X509Certificate(root).raw);
+    for (const path of [
+      '/api/builds',
+      '/ca/root.key',
+      '/root.key',
+      '/',
+      new URL(result.build.downloadUrl).pathname
+    ])
+      expect((await request.get(bootstrap + path)).status()).toBe(404);
+    await expect(tlsFetch(result.build.manifestUrl)).rejects.toThrow();
+    const html = (await tlsFetch(result.build.installUrl, root)).toString();
+    expect(html).toContain(result.certificateInstallUrl);
+    expect(html).not.toContain('安装帮助');
+    expect(html).not.toContain('在线安装需要 HTTPS');
+    expect((await tlsFetch(result.build.manifestUrl, root)).toString()).toContain(
+      result.build.downloadUrl
+    );
+    expect(await tlsFetch(result.build.downloadUrl, root)).toEqual(bytes);
+    const localRoot = await tlsFetch(`${result.serverUrl}/ca/root.crt`, root);
+    expect(new X509Certificate(localRoot).fingerprint256).toBe(result.caFingerprint);
+    await expectInstallPage(browser, result.build, 'cli-managed-https', true);
+    const page = await browser.newPage();
+    await page.goto(result.certificateInstallUrl);
+    await expect(page.getByRole('heading', { name: '安装 CA 证书' })).toBeVisible();
+    await page.screenshot({ path: 'test-results/ca-install.png', fullPage: true });
+    await page.close();
+    await stop(child);
+    child = undefined;
+    expect(await readFile(result.caCertificatePath)).toEqual(root);
+    await expect(request.get(result.certificateInstallUrl, { timeout: 1000 })).rejects.toThrow();
+    const again = await start([path], dir, '127.0.0.1', true);
+    child = again.child;
+    expect(again.result.caFingerprint).toBe(result.caFingerprint);
+    expect(await tlsFetch(again.result.build.downloadUrl, root)).toEqual(bytes);
+  } finally {
+    if (child) await stop(child);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('persistent startup defaults to CA-backed HTTPS and advertises its certificate bootstrap', async ({
+  request
+}) => {
+  const dir = await mkdtemp(join(tmpdir(), 'iparoom-managed-server-'));
+  const reservation = createServer();
+  await new Promise<void>((done) => reservation.listen(0, '127.0.0.1', done));
+  const port = (reservation.address() as { port: number }).port;
+  await new Promise<void>((done) => reservation.close(() => done()));
+  const { paths } = loadUserConfig({ env: { IPAROOM_USER_DATA_DIR: dir } });
+  const token = 'yaml-server-token-at-least-32-chars';
+  await writeFile(
+    paths.config,
+    `version: 1\nserver:\n  host: 127.0.0.1\n  hostname: 127.0.0.1\n  port: ${port}\n  adminToken: ${token}\nponte:\n  enabled: false\n`
+  );
+  const child = spawn(process.execPath, [resolve('scripts/serve.mjs')], {
+    env: { ...process.env, IPAROOM_USER_DATA_DIR: dir },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let logs = '';
+  child.stdout!.on('data', (c) => (logs += c));
+  child.stderr!.on('data', (c) => (logs += c));
+  try {
+    const rootPath = join(dir, '.iparoom/certificates/root.crt'),
+      origin = `https://127.0.0.1:${port}`;
+    await expect
+      .poll(
+        async () => {
+          try {
+            await tlsFetch(origin, await readFile(rootPath));
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 15000 }
+      )
+      .toBe(true);
+    const caUrl = logs.match(/Install CA: (http:\/\/\S+)/)![1];
+    const root = await readFile(rootPath),
+      html = (await tlsFetch(origin, root)).toString();
+    expect(html).toContain(caUrl);
+    expect(html).toContain('安装 CA');
+    expect(logs).toContain(`Configuration: ${paths.config}`);
+    expect(
+      (
+        await tlsFetch(origin + '/api/builds', root, { authorization: `Bearer ${token}` })
+      ).toString()
+    ).toContain('builds');
+    expect((await request.get(caUrl)).status()).toBe(200);
+    expect((await tlsFetch(origin + '/ca/iparoom.mobileconfig', root)).toString()).toContain(
+      'com.apple.security.root'
+    );
+    await expect(tlsFetch(origin)).rejects.toThrow();
+  } finally {
+    await stop(child);
     await rm(dir, { recursive: true, force: true });
   }
 });

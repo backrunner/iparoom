@@ -10,9 +10,11 @@ playwright-report/
 *.tgz
 .DS_Store
 certs/
+.iparoom/
 packages/cli/runtime/
 dist/
 packages/cli/skills/
+packages/cli/LICENSE
 
 __pycache__/
 *.pyc

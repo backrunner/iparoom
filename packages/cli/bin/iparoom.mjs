@@ -6,22 +6,17 @@ import { configureMcpCommand } from '../lib/mcp.mjs';
 import { installSkill } from '../lib/skill.mjs';
 import { fileURLToPath } from 'node:url';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, writeFile, readdir, stat, rm } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { readdir, stat } from 'node:fs/promises';
+import {
+  userConfig,
+  loadUserConfig,
+  updateClientCredentials,
+  explicitOptions
+} from '../lib/config.mjs';
 import { basename, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { Writable } from 'node:stream';
 import { createInterface } from 'node:readline/promises';
-const configDir = process.env.IPAROOM_CONFIG_DIR || join(homedir(), '.config', 'iparoom');
-const configPath = join(configDir, 'config.json');
-async function config() {
-  try {
-    return JSON.parse(await readFile(configPath, 'utf8'));
-  } catch (error) {
-    if (error.code === 'ENOENT') return {};
-    throw new Error('Cannot read CLI configuration. Run iparoom logout and login again.');
-  }
-}
 function serverUrl(value) {
   if (!value)
     throw new Error('Set IPAROOM_SERVER or run iparoom login --server https://192.168.1.10:8443');
@@ -38,9 +33,11 @@ function serverUrl(value) {
   return url.origin;
 }
 async function credentials(options) {
-  const saved = await config();
+  const saved = userConfig().config.client;
   const server = serverUrl(options.server || process.env.IPAROOM_SERVER || saved.server);
-  const token = process.env.IPAROOM_TOKEN || (saved.server === server ? saved.token : undefined);
+  const token =
+    process.env.IPAROOM_TOKEN ||
+    (saved.server && serverUrl(saved.server) === server ? saved.token : undefined);
   if (!token) throw new Error('Set IPAROOM_TOKEN or run iparoom login.');
   return { server, token };
 }
@@ -131,15 +128,21 @@ const program = new Command()
   .option('--no-open', 'Do not open a browser automatically')
   .option('--cert <pem>', 'HTTPS certificate chain PEM')
   .option('--key <pem>', 'HTTPS private key PEM')
+  .option('--ca <pem>', 'Public root CA for a supplied certificate chain')
+  .option('--ca-port <number>', 'Certificate-only HTTP bootstrap port (default: available port)')
+  .option('--http', 'Use HTTP instead of managed HTTPS')
+  .option('--ponte-hostname <name>', 'Surge Ponte domain, e.g. mymac.sgponte')
+  .option('--no-ponte', 'Disable automatic Ponte hostname selection')
   .option('--notes <text>', 'Release notes', '')
   .option('--json', 'Print machine-readable startup result')
-  .action(async (input, options) => {
+  .action(async (input, _options, command) => {
+    const options = explicitOptions(command);
     if (!input) program.help();
     await launch(await ipaFile(input), options);
   });
 configureMcpCommand(program.command('mcp')).action(async (_options, command) => {
   const { runMcp } = await import('../lib/mcp.mjs');
-  const options = { ...command.opts() };
+  const options = explicitOptions(command);
   for (const [key, value] of Object.entries(program.opts())) {
     if (
       program.getOptionValueSource(key) !== 'default' &&
@@ -177,12 +180,20 @@ program
       );
   });
 program
+  .command('config')
+  .description('Create or locate ~/.iparoom/config.yaml for manual editing')
+  .action(() => console.log(loadUserConfig({ legacyEnvFile: resolve('.env') }).paths.config));
+program
   .command('login')
-  .requiredOption('--server <url>', 'IPA Room server origin')
+  .option('--server <url>', 'IPA Room server origin (default: config.yaml client.server)')
   .description('Validate and store credentials with file mode 0600')
   .action(async (options) => {
-    const server = serverUrl(options.server),
-      token = process.env.IPAROOM_TOKEN || (await promptToken());
+    const saved = userConfig().config.client;
+    const server = serverUrl(options.server || process.env.IPAROOM_SERVER || saved.server),
+      token =
+        process.env.IPAROOM_TOKEN ||
+        (saved.server && serverUrl(saved.server) === server ? saved.token : '') ||
+        (await promptToken());
     const response = await fetch(`${server}/api/builds`, {
       redirect: 'error',
       headers: { Authorization: `Bearer ${token}` },
@@ -190,18 +201,14 @@ program
     });
     if (!response.ok)
       throw new Error(`Login failed (HTTP ${response.status}). Check the server and token.`);
-    await mkdir(configDir, { recursive: true, mode: 0o700 });
-    await writeFile(configPath, JSON.stringify({ server, token }) + '\n', { mode: 0o600 });
-    // Existing files retain their mode on write; restore private permissions explicitly.
-    const { chmod } = await import('node:fs/promises');
-    await chmod(configPath, 0o600);
+    await updateClientCredentials(server, token);
     console.log(`Logged in to ${server}`);
   });
 program
   .command('logout')
-  .description('Remove stored credentials')
+  .description('Clear client credentials while preserving config.yaml')
   .action(async () => {
-    await rm(configPath, { force: true });
+    await updateClientCredentials();
     console.log('Stored credentials removed.');
   });
 common(

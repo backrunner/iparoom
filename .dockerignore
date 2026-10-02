@@ -8,6 +8,7 @@ data
 test-results
 playwright-report
 certs
+.iparoom
 packages/cli/runtime
 dist
 packages/cli/skills/

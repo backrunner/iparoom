@@ -10,20 +10,25 @@ import { tmpdir } from 'node:os';
 import { get } from 'node:https';
 import { createServer } from 'node:http';
 import { fixture } from '../fixture';
+import { tlsFetch } from './tls-fetch';
+import { X509Certificate } from 'node:crypto';
+import { expectInstallPage } from './install-page';
+import { loadUserConfig } from '../../packages/cli/lib/config.mjs';
 const exec = promisify(execFile);
 const binary = process.env.IPAROOM_TEST_MCP_BIN || resolve('packages/cli/bin/iparoom-mcp.mjs');
-const env = () => ({
+const env = (dir: string) => ({
   ...process.env,
+  IPAROOM_USER_DATA_DIR: dir,
   IPAROOM_LAN_HOST: '',
   IPAROOM_HOSTNAME: '',
   IPAROOM_MAX_UPLOAD_BYTES: '16777216'
 });
-async function stdio(dir: string, args: string[] = []) {
+async function stdio(dir: string, args: string[] = [], managed = false) {
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [binary, ...args],
+    args: [binary, ...args, ...(!args.includes('--cert') && !managed ? ['--http'] : [])],
     cwd: dir,
-    env: env(),
+    env: env(dir),
     stderr: 'pipe'
   });
   transport.stderr?.on('data', () => {});
@@ -46,6 +51,7 @@ async function stopped(url: string) {
     .toBe(true);
 }
 test('standalone stdio MCP shares multiple IPAs, reports errors, revokes and cleans up on EOF', async ({
+  browser,
   request
 }) => {
   const dir = await mkdtemp(join(tmpdir(), 'iparoom-mcp-test-'));
@@ -84,6 +90,7 @@ test('standalone stdio MCP shares multiple IPAs, reports errors, revokes and cle
     const uploaded = await tool(client, 'iparoom_create_install_link', { path, notes: 'MCP 测试' });
     expect(uploaded.build.otaUrl).toBeNull();
     expect(uploaded.build.notes).toBe('MCP 测试');
+    await expectInstallPage(browser, uploaded.build, 'mcp-stdio');
     expect(await (await request.get(uploaded.build.downloadUrl)).body()).toEqual(bytes);
     const second = await tool(client, 'iparoom_create_install_link', { path: dir }).catch(
       () => null
@@ -93,6 +100,7 @@ test('standalone stdio MCP shares multiple IPAs, reports errors, revokes and cle
     const again = await tool(client, 'iparoom_create_install_link', { path });
     expect(again.build.id).not.toBe(uploaded.build.id);
     expect((await tool(client, 'iparoom_list_builds')).builds).toHaveLength(2);
+    await expectInstallPage(browser, again.build, 'mcp-stdio-second-build');
     expect(
       (await tool(client, 'iparoom_get_install_link', { id: uploaded.build.id })).build.shareToken
     ).toBe(uploaded.build.shareToken);
@@ -184,7 +192,7 @@ test('MCP HTTPS uses the certificate hostname in all links and manifest assets',
       exec(
         process.execPath,
         [binary, '--hostname', 'wrong.example.test', '--cert', cert, '--key', key],
-        { env: env() }
+        { env: env(dir) }
       )
     ).rejects.toThrow('does not match hostname');
   } finally {
@@ -207,6 +215,7 @@ async function stop(child: ChildProcess) {
   });
 }
 test('HTTP MCP requires authentication, rejects invalid requests and serves the real MCP client', async ({
+  browser,
   request
 }) => {
   const dir = await mkdtemp(join(tmpdir(), 'iparoom-mcp-http-test-'));
@@ -219,21 +228,15 @@ test('HTTP MCP requires authentication, rejects invalid requests and serves the 
   await new Promise<void>((done, reject) =>
     reservation.close((error) => (error ? reject(error) : done()))
   );
-  const args = [
-    join(dirname(binary), 'iparoom.mjs'),
-    'mcp',
-    '--transport',
-    'http',
-    '--hostname',
-    '127.0.0.1',
-    '--port',
-    String(port),
-    '--mcp-port',
-    '0'
-  ];
+  const { paths } = loadUserConfig({ env: { IPAROOM_USER_DATA_DIR: dir } });
+  await writeFile(
+    paths.config,
+    `version: 1\nshare:\n  port: ${port}\nhttps:\n  enabled: false\nmcp:\n  transport: http\n  port: 0\n  token: ${token}\n`
+  );
+  const args = [join(dirname(binary), 'iparoom.mjs'), 'mcp', '--hostname', '127.0.0.1'];
   const child = spawn(process.execPath, args, {
     cwd: dir,
-    env: { ...env(), IPAROOM_MCP_TOKEN: token },
+    env: env(dir),
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let stdout = '',
@@ -282,16 +285,57 @@ test('HTTP MCP requires authentication, rejects invalid requests and serves the 
       port
     });
     expect((await request.get(result.build.installUrl)).status()).toBe(200);
+    await expectInstallPage(browser, result.build, 'mcp-http');
     expect((await tool(client, 'iparoom_list_builds')).builds).toHaveLength(1);
     expect(stdout).toBe('');
   } finally {
     await client.close();
     await stop(child);
+    await expect(
+      exec(process.execPath, [binary, '--transport', 'http'], {
+        env: { ...env(dir), IPAROOM_MCP_TOKEN: '' }
+      })
+    ).rejects.toThrow('IPAROOM_MCP_TOKEN');
     await rm(dir, { recursive: true, force: true });
   }
-  await expect(
-    exec(process.execPath, [binary, '--transport', 'http'], {
-      env: { ...env(), IPAROOM_MCP_TOKEN: '' }
-    })
-  ).rejects.toThrow('IPAROOM_MCP_TOKEN');
+});
+
+test('default MCP signs Ponte and local addresses with its downloadable CA', async ({
+  request
+}) => {
+  const dir = await mkdtemp(join(tmpdir(), 'iparoom-managed-mcp-'));
+  const path = join(dir, 'App.ipa'),
+    bytes = await fixture();
+  await writeFile(path, bytes);
+  const { paths } = loadUserConfig({ env: { IPAROOM_USER_DATA_DIR: dir } });
+  await writeFile(paths.config, 'version: 1\nponte:\n  hostname: my-mac.sgponte\n');
+  const { client } = await stdio(dir, [], true);
+  try {
+    const result = await tool(client, 'iparoom_create_install_link', { path });
+    expect(result).toMatchObject({
+      https: true,
+      managedCertificates: true,
+      hostname: 'my-mac.sgponte',
+      ponteHostname: 'my-mac.sgponte',
+      ponteDetection: 'configured',
+      configPath: join(dir, '.iparoom/config.yaml')
+    });
+    const root = await readFile(result.caCertificatePath);
+    expect(result.build.installUrl).toMatch(/^https:\/\/my-mac\.sgponte:/);
+    const caUrl = new URL(result.certificateInstallUrl);
+    caUrl.hostname = '127.0.0.1';
+    expect((await request.get(caUrl.toString())).status()).toBe(200);
+    expect((await tlsFetch(result.build.manifestUrl, root)).toString()).toContain(
+      result.build.downloadUrl
+    );
+    expect(await tlsFetch(result.build.downloadUrl, root)).toEqual(bytes);
+    const local = new URL(result.build.downloadUrl);
+    local.hostname = '127.0.0.1';
+    expect(await tlsFetch(local.toString(), root)).toEqual(bytes);
+    const cert = new X509Certificate(root);
+    expect(cert.fingerprint256).toBe(result.caFingerprint);
+  } finally {
+    await client.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

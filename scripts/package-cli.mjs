@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 const root = fileURLToPath(new URL('../', import.meta.url));
 await mkdir(join(root, 'dist'), { recursive: true });
+await cp(join(root, 'LICENSE'), join(root, 'packages/cli/LICENSE'));
 if (process.argv.includes('--build')) {
   await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [join(root, 'node_modules/vite/bin/vite.js'), 'build'], {

@@ -2,12 +2,15 @@ import { networkInterfaces, tmpdir } from 'node:os';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { createReadStream } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, X509Certificate, createPrivateKey } from 'node:crypto';
-import { isIP } from 'node:net';
-import { listenAddress, shareHostname } from './network.mjs';
+import { randomBytes } from 'node:crypto';
+import { listenAddress, shareHostname, lanAddress } from './network.mjs';
+import { tlsOptions, startCertificateServer } from './certificates.mjs';
+import { detectPonte } from './ponte.mjs';
+import { shareOptions, effectiveEnvironment } from './config.mjs';
+export { tlsOptions } from './certificates.mjs';
 
 export async function ipaFile(input) {
   const path = resolve(input);
@@ -28,23 +31,9 @@ export function portNumber(value, label = '--port') {
     throw new Error(`${label} must be an integer between 0 and 65535.`);
   return port;
 }
-export async function tlsOptions(options, advertised) {
-  if (Boolean(options.cert) !== Boolean(options.key))
-    throw new Error('HTTPS requires both --cert and --key.');
-  if (!options.cert) return null;
-  const cert = await readFile(resolve(options.cert)),
-    key = await readFile(resolve(options.key));
-  const leaf = new X509Certificate(cert);
-  if (!leaf.checkPrivateKey(createPrivateKey(key)))
-    throw new Error('HTTPS private key does not match the certificate.');
-  const name = advertised.replace(/^\[|\]$/g, '');
-  if (!(isIP(name) ? leaf.checkIP(name) : leaf.checkHost(name)))
-    throw new Error(
-      `HTTPS certificate does not match hostname ${advertised}. Set --hostname to a name in the certificate.`
-    );
-  return { cert, key };
-}
 export async function createShareSession(options = {}) {
+  options = shareOptions(options);
+  const configuredEnv = effectiveEnvironment();
   const runtime = fileURLToPath(new URL('../runtime/web/handler.js', import.meta.url));
   try {
     await stat(runtime);
@@ -55,14 +44,16 @@ export async function createShareSession(options = {}) {
   }
   const interfaces = networkInterfaces();
   const host = listenAddress(interfaces, options.host || process.env.IPAROOM_LAN_HOST || undefined);
+  const ponte = await detectPonte(options);
   const advertised = shareHostname(
     interfaces,
     host,
-    options.hostname || process.env.IPAROOM_HOSTNAME
+    options.hostname || process.env.IPAROOM_HOSTNAME || (!options.http && ponte.hostname)
   );
   const port = portNumber(options.port ?? 0);
-  const tls = await tlsOptions(options, advertised);
-  const maxBytes = Number(process.env.IPAROOM_MAX_UPLOAD_BYTES || 1073741824);
+  const tls = await tlsOptions(options, advertised, [lanAddress(interfaces), ponte.hostname]);
+  const caPort = portNumber(options.caPort ?? process.env.IPAROOM_CA_PORT ?? 0, '--ca-port');
+  const maxBytes = Number(configuredEnv.IPAROOM_MAX_UPLOAD_BYTES || 1073741824);
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)
     throw new Error('Invalid IPAROOM_MAX_UPLOAD_BYTES.');
   const dataDir = await mkdtemp(join(tmpdir(), 'iparoom-share-'));
@@ -79,7 +70,8 @@ export async function createShareSession(options = {}) {
     stopping = false,
     cleaning,
     startup,
-    origin;
+    origin,
+    certificateServer;
   const respond = (req, res) => {
     if (!handler || stopping) {
       res.statusCode = 503;
@@ -105,9 +97,9 @@ export async function createShareSession(options = {}) {
     stopping = true;
     abort.abort();
     cleaning = (async () => {
-      await Promise.all([close(bootstrap), close(server)]);
+      await Promise.all([close(bootstrap), close(server), certificateServer?.close()]);
       await startup?.catch(() => {});
-      await Promise.all([close(bootstrap), close(server)]);
+      await Promise.all([close(bootstrap), close(server), certificateServer?.close()]);
       await Promise.allSettled([...pending]);
       process.emit('iparoom:shutdown');
       await rm(dataDir, { recursive: true, force: true });
@@ -120,7 +112,18 @@ export async function createShareSession(options = {}) {
       server.listen(port, host, resolveListen);
     });
     origin = `${tls ? 'https' : 'http'}://${advertised}:${server.address().port}`;
-    Object.assign(process.env, { ORIGIN: origin, IPAROOM_BASE_URL: origin });
+    certificateServer = await startCertificateServer(tls, {
+      host,
+      hostname: advertised,
+      port: caPort
+    });
+    Object.assign(process.env, {
+      ORIGIN: origin,
+      IPAROOM_BASE_URL: origin,
+      IPAROOM_CA_CERT: tls?.rootPath || '',
+      IPAROOM_CA_ROOT_URL: '',
+      IPAROOM_CA_INSTALL_URL: certificateServer?.url || ''
+    });
     handler = (await import(new URL('../runtime/web/handler.js', import.meta.url))).handler;
     await new Promise((resolveListen, reject) => {
       bootstrap.once('error', reject);
@@ -197,6 +200,13 @@ export async function createShareSession(options = {}) {
       port: server.address()?.port ?? null,
       temporary: true,
       https: Boolean(tls),
+      configPath: options.configPaths.config,
+      certificateInstallUrl: certificateServer?.url ?? null,
+      caCertificatePath: tls?.rootPath ?? null,
+      caFingerprint: certificateServer?.fingerprint ?? null,
+      managedCertificates: tls?.managed ?? false,
+      ponteHostname: ponte.hostname,
+      ponteDetection: ponte.source,
       deviceInstallation: 'not-verified'
     })
   };
