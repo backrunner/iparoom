@@ -33,7 +33,7 @@
 <div class="install-shell">
   <a href="/" class="brand"><span class="brand-icon"><Box size={23} /></span> IPA Room</a>
   <main class="install-card panel">
-    <span class="eyebrow">READY FOR YOUR NEXT TEST</span>
+    <span class="install-kicker">测试构建</span>
     <div class="app-icon large">{data.build.name.slice(0, 1).toUpperCase()}</div>
     <h1>{data.build.name}</h1>
     <p class="subtle">{data.build.bundleId}</p>
@@ -62,8 +62,11 @@
                 ? '此构建为 App Store 类型，请通过 TestFlight 或 App Store 分发。'
                 : '无法识别此构建的签名类型，请联系开发者确认是否支持安装。'}
         </p>
-      </div>{/if}<a class="secondary full" href={data.downloadUrl!}
-      ><Download size={17} />下载 IPA 文件</a
+      </div>{/if}<a
+      class="full"
+      class:primary={!allowed}
+      class:secondary={allowed}
+      href={data.downloadUrl!}><Download size={17} />下载 IPA 文件</a
     >{#if data.build.notes}<section class="release-notes">
         <h2>这次更新</h2>
         <p>{data.build.notes}</p>
@@ -87,10 +90,10 @@
     <img src={data.qr} alt="在测试设备上打开安装页的二维码" width="160" height="160" />
     <div>
       <strong>在手机上打开</strong>
-      <p>扫描二维码，继续安装。</p>
+      <p>扫描二维码，打开此构建。</p>
       <button class="text-button" onclick={copy}><Copy size={14} />复制分享链接</button>
     </div>
   </aside>
   {#if message}<p role="status" class="install-hint">{message}</p>{/if}
-  <footer><span>POWERED BY IPA ROOM</span><span>构建到设备，一步更近。</span></footer>
+  <footer><span>IPA Room</span><span>测试构建分发</span></footer>
 </div>

@@ -20,7 +20,12 @@ export const handle: Handle = async ({ event, resolve }) => {
   // Rejected uploads may leave unread bytes; do not reuse their HTTP/1.1 connection.
   if (response.status === 413) response.headers.set('Connection', 'close');
   response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Referrer-Policy', 'no-referrer');
+  // Native POST navigation needs a same-origin referrer policy to preserve its Origin header.
+  // Keep token-bearing share URLs private when navigating away from their pages.
+  response.headers.set(
+    'Referrer-Policy',
+    event.url.pathname === '/' ? 'same-origin' : 'no-referrer'
+  );
   if (!event.url.pathname.startsWith('/_app/')) response.headers.set('Cache-Control', 'no-store');
   return response;
 };

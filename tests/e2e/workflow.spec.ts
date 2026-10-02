@@ -29,6 +29,7 @@ test('API auth, IPA validation, manifest, ranged download, rotation and revocati
   expect(build.sha256).toBe(createHash('sha256').update(ipa).digest('hex'));
   expect(build.otaUrl).toContain('itms-services:');
   const path = `/s/${build.shareToken}`;
+  expect((await request.get(path)).headers()['referrer-policy']).toBe('no-referrer');
   const manifest = await request.get(`${path}/manifest.plist`);
   expect(manifest.status()).toBe(200);
   expect(await manifest.text()).toContain('https://192.168.1.10:8443');
@@ -55,6 +56,34 @@ test('API auth, IPA validation, manifest, ranged download, rotation and revocati
   await request.post(`/api/builds/${build.id}/share`, { headers, data: { enabled: false } });
   expect((await request.get(`/s/${newBuild.shareToken}/manifest.plist`)).status()).toBe(404);
   expect((await request.delete(`/api/builds/${build.id}`, { headers })).status()).toBe(204);
+});
+
+test('native login and logout preserve same-origin form protection without JavaScript', async ({
+  browser,
+  request
+}) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    const response = await page.goto('http://127.0.0.1:4178/');
+    expect(response!.headers()['referrer-policy']).toBe('same-origin');
+    await page.getByLabel('管理 Token').fill(token);
+    await page.getByRole('button', { name: '进入工作台' }).click();
+    await expect(page.getByRole('heading', { name: '构建仓库', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '退出登录' }).click();
+    await expect(page.getByRole('heading', { name: '分享你的测试构建' })).toBeVisible();
+    expect(
+      (
+        await request.post('/?/login', {
+          headers: { Origin: 'http://untrusted.example' },
+          form: { token },
+          maxRedirects: 0
+        })
+      ).status()
+    ).toBe(403);
+  } finally {
+    await context.close();
+  }
 });
 test('CLI login, upload, list, info, revoke and delete', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'iparoom-cli-test-'));
@@ -105,7 +134,7 @@ test('browser login, upload, search, share and mobile installation page', async 
   await expect(page.getByRole('heading', { name: '进入你的构建仓库' })).toBeVisible();
   await page.getByLabel('管理 Token').fill(token);
   await page.getByRole('button', { name: '进入工作台' }).click();
-  await expect(page.getByRole('heading', { name: '构建仓库.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '构建仓库', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '上传 IPA', exact: true }).click();
   await page.locator('input[type=file]').setInputFiles({
     name: 'Fixture.ipa',
@@ -142,4 +171,39 @@ test('browser login, upload, search, share and mobile installation page', async 
   expect(errors).toEqual([]);
   const builds = (await (await request.get('/api/builds', { headers })).json()).builds;
   for (const build of builds) await request.delete(`/api/builds/${build.id}`, { headers });
+});
+
+test('compact layouts support both appearances and keyboard dialog dismissal', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  for (const colorScheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: '分享你的测试构建' })).toBeVisible();
+    await page.getByRole('button', { name: 'CLI 与集成' }).click();
+    await page.getByRole('tab', { name: 'Agent / MCP' }).click();
+    await expect(page.getByRole('heading', { name: '由 Agent 独立启动 MCP' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page.getByRole('button', { name: '构建仓库' }).click();
+    await page.getByLabel('管理 Token').fill(token);
+    await page.getByRole('button', { name: '进入工作台' }).click();
+    const trigger = page.getByRole('button', { name: '上传 IPA', exact: true });
+    const bounds = await trigger.boundingBox();
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    expect(bounds!.width).toBeGreaterThanOrEqual(44);
+    await trigger.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Tab');
+    expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(trigger).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page.getByRole('button', { name: '退出登录' }).click();
+    await expect(page.getByRole('heading', { name: '分享你的测试构建' })).toBeVisible();
+  }
 });

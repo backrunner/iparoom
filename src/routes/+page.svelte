@@ -159,30 +159,32 @@
 </script>
 
 <svelte:head
-  ><title>IPA Room · 让测试构建，即刻抵达</title><meta
+  ><title>IPA Room · 测试构建</title><meta
     name="description"
     content="上传 Xcode 导出的 IPA，生成安装链接，与测试设备分享每一次构建。"
   /></svelte:head
 >
 <div class="workspace">
   <aside class="sidebar">
-    <a class="brand" href="/"
-      ><span class="brand-icon"><Box size={23} /></span> IPA Room
-      <span class="version">BETA</span></a
-    >
+    <a class="brand" href="/"><span class="brand-icon"><Box size={23} /></span> IPA Room </a>
     <div class="workspace-label">开发者工作台</div>
     <nav aria-label="主要导航">
-      <button class:active={section === 'builds'} onclick={() => (section = 'builds')}
+      <button
+        class:active={section === 'builds'}
+        aria-current={section === 'builds' ? 'page' : undefined}
+        onclick={() => (section = 'builds')}
         ><Layers size={18} />构建仓库 <span class="nav-count">{data.builds.length}</span></button
-      ><button class:active={section === 'cli'} onclick={() => (section = 'cli')}
+      ><button
+        class:active={section === 'cli'}
+        aria-current={section === 'cli' ? 'page' : undefined}
+        onclick={() => (section = 'cli')}
         ><Terminal size={18} />CLI 与集成 <ArrowUpRight size={14} /></button
       >
     </nav>
     <div class="sidebar-bottom">
       <div class="small-icon"><Smartphone size={18} /></div>
-      <strong>从构建到设备</strong>
-      <p>一个链接，连接你的下一次测试。</p>
-      <span class="subtle">SvelteKit · Bits UI</span>
+      <strong>局域网分发</strong>
+      <p>通过安装链接，将测试构建分享给你的设备。</p>
     </div>
   </aside>
   <div class="main-shell">
@@ -201,11 +203,10 @@
       </div>
     </header>
     <main>
-      {#if !data.admin}
+      {#if !data.admin && section === 'builds'}
         <div class="intro">
-          <span class="eyebrow">BUILD. SHARE. INSTALL.</span>
-          <h1>让测试构建，<br /><span>即刻抵达。</span></h1>
-          <p>把 Xcode 的 IPA 带到这里。<br />上传、分享，在测试设备上开启下一次迭代。</p>
+          <h1>分享你的测试构建</h1>
+          <p>上传 IPA，生成安装链接与二维码。</p>
         </div>
         <div class="login-grid">
           <form class="panel login-panel" method="POST" action="?/login" use:enhance>
@@ -228,7 +229,6 @@
               </p>{/if}
           </form>
           <div class="workflow">
-            <span class="eyebrow">A SHORTER PATH TO TESTING</span>
             <div>
               <span>01</span>
               <section>
@@ -246,8 +246,8 @@
             <div>
               <span>03</span>
               <section>
-                <h3>扫码开始测试</h3>
-                <p>在同一局域网的 iPhone Safari 打开链接，安装到受支持设备。</p>
+                <h3>在设备上打开</h3>
+                <p>扫码访问安装页。在线安装需要受信任的 HTTPS 和有效签名。</p>
               </section>
             </div>
           </div>
@@ -255,9 +255,8 @@
       {:else if section === 'builds'}
         <div class="page-heading">
           <div>
-            <span class="eyebrow">YOUR BUILDS, ONE PLACE</span>
-            <h1>构建仓库<span class="heading-dot">.</span></h1>
-            <p>每一次迭代，都有一个抵达设备的入口。</p>
+            <h1>构建仓库</h1>
+            <p>管理测试版本，分享给你的设备。</p>
           </div>
           <button
             class="primary"
@@ -291,7 +290,7 @@
         </div>
         {#if builds.length === 0}<div class="empty-state">
             <div class="empty-icon"><Box size={36} strokeWidth={1.4} /></div>
-            <h3>{data.builds.length ? '没有匹配的构建' : '你的下一个构建，从这里开始'}</h3>
+            <h3>{data.builds.length ? '没有匹配的构建' : '还没有测试构建'}</h3>
             <p>
               {data.builds.length
                 ? '试试其他关键词或签名类型。'
@@ -340,8 +339,7 @@
       {:else}
         <div class="page-heading">
           <div>
-            <span class="eyebrow">MADE FOR YOUR WORKFLOW</span>
-            <h1>从终端，直接分享<span class="heading-dot">.</span></h1>
+            <h1>CLI 与集成</h1>
             <p>把测试分发接入 Xcode 和你的构建流水线。</p>
           </div>
           <Terminal size={38} strokeWidth={1.2} />
@@ -440,7 +438,7 @@ iparoom list --json</code
           </div>
         </div>
       {/if}
-      <footer><span>IPA ROOM</span><span>为更轻松的每一次测试构建。</span></footer>
+      <footer><span>IPA Room</span><span>测试构建分发</span></footer>
     </main>
   </div>
 </div>
