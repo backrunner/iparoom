@@ -1,5 +1,14 @@
 <script lang="ts">
-  import { Box, Smartphone, Download, ArrowUpRight, Shield, Copy } from '@lucide/svelte';
+  import { Button, Collapsible } from 'bits-ui';
+  import {
+    Box,
+    Smartphone,
+    Download,
+    ArrowUpRight,
+    Shield,
+    Copy,
+    ChevronDown
+  } from '@lucide/svelte';
   import { sizeLabel, signingLabels } from '$lib/types';
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();
@@ -14,86 +23,102 @@
       !expired &&
       ['ad-hoc', 'enterprise', 'development'].includes(data.build.signing)
   );
+  const warning = $derived(
+    expired
+      ? '签名已过期'
+      : !data.otaUrl
+        ? '在线安装需要 HTTPS'
+        : data.build.signing === 'app-store'
+          ? '请使用 TestFlight 安装此构建'
+          : '无法识别签名，请联系开发者'
+  );
   async function copy() {
     try {
       await navigator.clipboard.writeText(data.installUrl!);
       message = '链接已复制';
     } catch {
-      message = '请手动复制浏览器地址栏中的链接';
+      message = '请复制地址栏中的链接';
     }
   }
 </script>
 
 <svelte:head
-  ><title>{data.build.name} · 安装测试构建 · IPA Room</title><meta
+  ><title>{data.build.name} · IPA Room</title><meta
     name="robots"
     content="noindex,nofollow"
   /></svelte:head
 >
 <div class="install-shell">
-  <a href="/" class="brand"><span class="brand-icon"><Box size={23} /></span> IPA Room</a>
-  <main class="install-card panel">
-    <span class="install-kicker">测试构建</span>
-    <div class="app-icon large">{data.build.name.slice(0, 1).toUpperCase()}</div>
-    <h1>{data.build.name}</h1>
-    <p class="subtle">{data.build.bundleId}</p>
-    <div class="install-tags">
-      <span class="badge">v{data.build.version}</span><span class="badge"
-        >Build {data.build.buildNumber}</span
-      ><span class="badge">{signingLabels[data.build.signing]}</span>
+  <header class="install-header">
+    <a href="/" class="brand"><span class="brand-icon"><Box size={20} /></span>IPA Room</a
+    ><Button.Root class="icon-button" aria-label="复制分享链接" onclick={copy}
+      ><Copy size={17} /></Button.Root
+    >
+  </header>
+  <main class="install-card">
+    <div class="install-app">
+      <div class="app-icon large" data-tone={data.build.name.charCodeAt(0) % 4}>
+        {data.build.name.slice(0, 1).toUpperCase()}
+      </div>
+      <div>
+        <h1>{data.build.name}</h1>
+        <p>
+          版本 {data.build.version}<span class="build-number">Build {data.build.buildNumber}</span>
+        </p>
+      </div>
     </div>
     <div class="install-facts">
-      <div><span>安装包大小</span><strong>{sizeLabel(data.build.size)}</strong></div>
-      <div><span>系统要求</span><strong>iOS {data.build.minimumOS}+</strong></div>
+      <span>{sizeLabel(data.build.size)}</span><span>iOS {data.build.minimumOS}+</span><span
+        >{signingLabels[data.build.signing]}</span
+      >
     </div>
-    {#if allowed}<a class="primary full" href={data.otaUrl!}
-        ><Smartphone size={19} />安装到 iPhone / iPad</a
-      >
-      <p class="install-hint">请在同一局域网的 iPhone 或 iPad 上使用 Safari 打开。</p>{:else}<div
-        class="install-warning"
-      >
-        <Shield size={18} />
-        <p>
-          {expired
-            ? '签名描述文件已过期，请联系开发者重新导出。'
-            : !data.otaUrl
-              ? '此局域网服务尚未配置 HTTPS，暂时无法在线安装；可先下载 IPA。'
-              : data.build.signing === 'app-store'
-                ? '此构建为 App Store 类型，请通过 TestFlight 或 App Store 分发。'
-                : '无法识别此构建的签名类型，请联系开发者确认是否支持安装。'}
-        </p>
-      </div>{/if}<a
-      class="full"
-      class:primary={!allowed}
-      class:secondary={allowed}
-      href={data.downloadUrl!}><Download size={17} />下载 IPA 文件</a
-    >{#if data.build.notes}<section class="release-notes">
-        <h2>这次更新</h2>
+    <div class="install-actions">
+      {#if allowed}<a class="primary full" href={data.otaUrl!}
+          ><Smartphone size={18} />安装到 iPhone / iPad</a
+        ><a class="text-link download-link" href={data.downloadUrl!}
+          >下载 IPA <Download size={14} /></a
+        >
+      {:else}<a class="primary full" href={data.downloadUrl!}><Download size={18} />下载 IPA 文件</a
+        >
+        <p class="install-warning"><Shield size={15} />{warning}</p>{/if}
+    </div>
+    {#if data.build.notes}<section class="release-notes">
+        <h2>更新说明</h2>
         <p>{data.build.notes}</p>
       </section>{/if}
-    <details class="install-help">
-      <summary>安装遇到问题？</summary>
-      <p>
-        请确认设备与服务器在同一局域网，且已安装并完全信任内网 HTTPS 的根证书。Ad Hoc /
-        开发签名要求你的设备 UDID 已包含在描述文件中。企业应用可能需要在「设置 → 通用 → VPN
-        与设备管理」中信任开发者。描述文件信息仅用于提示，服务不会重新签名或验证签名。
-      </p>
-      <p>这是测试构建的分发入口。远程连接调试器仍需 Xcode 支持的设备连接方式。</p>
-      <a
-        href="https://support.apple.com/en-gb/guide/deployment/depce7cefc4d/1/web"
-        target="_blank"
-        rel="noreferrer">查看 Apple 安装说明 <ArrowUpRight size={14} /></a
-      >
-    </details>
+    <Collapsible.Root class="help-section install-help"
+      ><Collapsible.Trigger class="disclosure"
+        >安装帮助 <ChevronDown size={15} /></Collapsible.Trigger
+      ><Collapsible.Content class="help-content">
+        <ul>
+          <li>在同一局域网的 iPhone / iPad Safari 中打开。</li>
+          <li>HTTPS 证书须匹配访问地址，并被设备完全信任。</li>
+          <li>开发签名 / Ad Hoc 须包含设备 UDID；企业签名可能需要在设备设置中信任开发者。</li>
+        </ul>
+        <dl class="build-details">
+          <div>
+            <dt>Bundle ID</dt>
+            <dd>{data.build.bundleId}</dd>
+          </div>
+          {#if data.build.profileExpiresAt}<div>
+              <dt>签名到期</dt>
+              <dd>{new Date(data.build.profileExpiresAt).toLocaleDateString('zh-CN')}</dd>
+            </div>{/if}
+        </dl>
+        <p>签名信息仅供参考，服务不会重新签名或验证代码签名。</p>
+        <a
+          class="text-link"
+          href="https://support.apple.com/en-gb/guide/deployment/depce7cefc4d/1/web"
+          target="_blank"
+          rel="noreferrer">Apple 安装说明 <ArrowUpRight size={14} /></a
+        >
+      </Collapsible.Content></Collapsible.Root
+    >
   </main>
   <aside class="install-qr">
-    <img src={data.qr} alt="在测试设备上打开安装页的二维码" width="160" height="160" />
-    <div>
-      <strong>在手机上打开</strong>
-      <p>扫描二维码，打开此构建。</p>
-      <button class="text-button" onclick={copy}><Copy size={14} />复制分享链接</button>
-    </div>
+    <img src={data.qr} alt="在测试设备上打开安装页的二维码" width="160" height="160" /><span
+      >在设备上扫码打开</span
+    >
   </aside>
   {#if message}<p role="status" class="install-hint">{message}</p>{/if}
-  <footer><span>IPA Room</span><span>测试构建分发</span></footer>
 </div>

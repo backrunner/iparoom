@@ -4,6 +4,8 @@ LAN-hosted iOS test build distribution with **SvelteKit + Bits UI + SCSS**, a No
 
 Upload an Xcode-exported IPA to get a shareable installation page, QR code, IPA download URL, and HTTPS `itms-services` manifest. Links can be revoked or rotated. The dashboard includes upload progress, metadata, release notes, search, signing filters, and build deletion.
 
+Expand link management in the share dialog to rotate or revoke a link; use the row menu to delete a build. Bits UI controls support keyboard interaction, system dark appearance and mobile layouts, with installation requirements and help collapsed by default.
+
 ## Run locally
 
 Requires Node.js 24+ and pnpm 12.

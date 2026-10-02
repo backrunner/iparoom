@@ -1,25 +1,24 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
   import { enhance } from '$app/forms';
-  import { Dialog, Tabs } from 'bits-ui';
+  import { Button, Collapsible, Dialog, DropdownMenu, Label, Progress, Tabs } from 'bits-ui';
+  import CodeBlock from '$lib/components/CodeBlock.svelte';
+  import SigningFilter from '$lib/components/SigningFilter.svelte';
   import {
     Box,
     Upload,
     ArrowUpRight,
     Search,
-    Terminal,
     Link,
     X,
     Copy,
     Trash2,
-    Smartphone,
     LogOut,
     Check,
-    Package,
-    Layers,
-    HardDrive,
-    Shield,
-    LoaderCircle
+    LoaderCircle,
+    ChevronDown,
+    MoreHorizontal,
+    Plus
   } from '@lucide/svelte';
   import QRCode from 'qrcode';
   import { sizeLabel, signingLabels, type Build } from '$lib/types';
@@ -31,6 +30,8 @@
   let uploadOpen = $state(false),
     shareOpen = $state(false),
     deleteOpen = $state(false);
+  let uploadTrigger = $state<HTMLButtonElement | null>(null);
+  let deleteReturnFocus = $state<HTMLButtonElement | null>(null);
   let file = $state<File | null>(null),
     notes = $state(''),
     uploading = $state(false),
@@ -49,7 +50,6 @@
         (filter === 'all' || build.signing === filter)
     )
   );
-  const apps = $derived(new Set(data.builds.map((build) => build.bundleId)).size);
   const bytes = $derived(data.builds.reduce((sum, build) => sum + build.size, 0));
   async function copy(value: string) {
     try {
@@ -104,7 +104,7 @@
       uploadOpen = false;
       file = null;
       notes = '';
-      notice = '构建已上传，安装链接已生成';
+      notice = '已上传';
     } catch (cause) {
       failure = cause instanceof Error ? cause.message : '上传失败';
     } finally {
@@ -159,391 +159,401 @@
 </script>
 
 <svelte:head
-  ><title>IPA Room · 测试构建</title><meta
+  ><title>IPA Room</title><meta
     name="description"
-    content="上传 Xcode 导出的 IPA，生成安装链接，与测试设备分享每一次构建。"
+    content="局域网 IPA 分发与构建管理"
   /></svelte:head
 >
+
 <div class="workspace">
-  <aside class="sidebar">
-    <a class="brand" href="/"><span class="brand-icon"><Box size={23} /></span> IPA Room </a>
-    <div class="workspace-label">开发者工作台</div>
-    <nav aria-label="主要导航">
-      <button
-        class:active={section === 'builds'}
-        aria-current={section === 'builds' ? 'page' : undefined}
-        onclick={() => (section = 'builds')}
-        ><Layers size={18} />构建仓库 <span class="nav-count">{data.builds.length}</span></button
-      ><button
-        class:active={section === 'cli'}
-        aria-current={section === 'cli' ? 'page' : undefined}
-        onclick={() => (section = 'cli')}
-        ><Terminal size={18} />CLI 与集成 <ArrowUpRight size={14} /></button
-      >
-    </nav>
-    <div class="sidebar-bottom">
-      <div class="small-icon"><Smartphone size={18} /></div>
-      <strong>局域网分发</strong>
-      <p>通过安装链接，将测试构建分享给你的设备。</p>
-    </div>
-  </aside>
-  <div class="main-shell">
-    <header class="topbar">
-      <span
-        >工作台 <span class="breadcrumb">/</span>
-        {section === 'builds' ? '构建仓库' : 'CLI 与集成'}</span
-      >
-      <div class="top-actions">
-        <span class="status-dot"></span><span>局域网服务</span>{#if data.admin}<form
-            method="POST"
-            action="?/logout"
-          >
-            <button class="icon-button" aria-label="退出登录"><LogOut size={17} /></button>
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="/"><span class="brand-icon"><Box size={20} /></span>IPA Room</a>
+      <nav class="workspace-nav" aria-label="主要导航">
+        <Button.Root
+          class={section === 'builds' ? 'active' : ''}
+          aria-current={section === 'builds' ? 'page' : undefined}
+          onclick={() => (section = 'builds')}>构建仓库</Button.Root
+        >
+        <Button.Root
+          class={section === 'cli' ? 'active' : ''}
+          aria-current={section === 'cli' ? 'page' : undefined}
+          onclick={() => (section = 'cli')}>CLI 与集成</Button.Root
+        >
+      </nav>
+      <div class="header-actions">
+        <span class="connection"><span class="status-dot"></span>局域网</span>
+        {#if data.admin}<form method="POST" action="?/logout">
+            <Button.Root type="submit" class="icon-button" aria-label="退出登录"
+              ><LogOut size={17} /></Button.Root
+            >
           </form>{/if}
       </div>
-    </header>
-    <main>
-      {#if !data.admin && section === 'builds'}
-        <div class="intro">
-          <h1>分享你的测试构建</h1>
-          <p>上传 IPA，生成安装链接与二维码。</p>
-        </div>
-        <div class="login-grid">
-          <form class="panel login-panel" method="POST" action="?/login" use:enhance>
-            <span class="small-icon"><Shield size={21} /></span>
-            <h2>进入你的构建仓库</h2>
-            <p>使用服务端配置的管理 Token 登录。</p>
-            <label for="token">管理 Token</label><input
-              id="token"
-              name="token"
-              type="password"
-              autocomplete="current-password"
-              required
-              placeholder="输入管理 Token"
-            /><button class="primary" disabled={!data.configured}
-              >进入工作台 <ArrowUpRight size={17} /></button
-            >{#if form?.message}<p class="error" role="alert">
-                {form.message}
-              </p>{/if}{#if !data.configured}<p class="error">
-                请先在 .env 中配置至少 24 字符的 IPAROOM_ADMIN_TOKEN，再启动服务。
-              </p>{/if}
-          </form>
-          <div class="workflow">
-            <div>
-              <span>01</span>
-              <section>
-                <h3>导出你的 IPA</h3>
-                <p>使用 Xcode 导出适合测试分发的签名构建。</p>
-              </section>
-            </div>
-            <div>
-              <span>02</span>
-              <section>
-                <h3>上传，自动就绪</h3>
-                <p>解析应用、版本和签名描述文件，生成分享入口。</p>
-              </section>
-            </div>
-            <div>
-              <span>03</span>
-              <section>
-                <h3>在设备上打开</h3>
-                <p>扫码访问安装页。在线安装需要受信任的 HTTPS 和有效签名。</p>
-              </section>
-            </div>
-          </div>
-        </div>
-      {:else if section === 'builds'}
-        <div class="page-heading">
-          <div>
-            <h1>构建仓库</h1>
-            <p>管理测试版本，分享给你的设备。</p>
-          </div>
-          <button
-            class="primary"
-            onclick={() => {
-              failure = '';
-              uploadOpen = true;
-            }}><Upload size={18} />上传 IPA</button
+    </div>
+  </header>
+  <main class="workspace-main">
+    {#if !data.admin && section === 'builds'}
+      <div class="login-layout">
+        <form class="login-panel" method="POST" action="?/login" use:enhance>
+          <div class="login-symbol"><Box size={26} /></div>
+          <h1>登录构建仓库</h1>
+          <Label.Root for="token">管理 Token</Label.Root>
+          <input
+            id="token"
+            name="token"
+            type="password"
+            autocomplete="current-password"
+            required
+            placeholder="输入 Token"
+          />
+          <Button.Root type="submit" class="primary full" disabled={!data.configured}
+            >登录 <ArrowUpRight size={16} /></Button.Root
           >
-        </div>
-        <div class="stats">
-          <div><span>应用数量</span><strong>{apps}<Package size={20} /></strong></div>
-          <div><span>测试构建</span><strong>{data.builds.length}<Layers size={20} /></strong></div>
-          <div><span>存储用量</span><strong>{sizeLabel(bytes)}<HardDrive size={20} /></strong></div>
-        </div>
-        <div class="list-toolbar">
-          <h2>全部构建 <span class="count">{builds.length}</span></h2>
-          <div class="filters">
-            <label class="search"
-              ><Search size={17} /><input
-                aria-label="搜索构建"
-                placeholder="搜索应用、版本或 Bundle ID"
-                bind:value={query}
-              /></label
-            ><select aria-label="筛选签名类型" bind:value={filter}
-              ><option value="all">全部签名</option
-              >{#each Object.entries(signingLabels) as [key, label]}<option value={key}
-                  >{label}</option
-                >{/each}</select
+          {#if form?.message}<p class="error" role="alert">{form.message}</p>{/if}
+          {#if !data.configured}<p class="error">服务尚未配置管理 Token。</p>
+            <Collapsible.Root class="help-section"
+              ><Collapsible.Trigger class="disclosure"
+                >配置方法 <ChevronDown size={15} /></Collapsible.Trigger
+              ><Collapsible.Content class="help-content">
+                <p>在 .env 中设置至少 24 字符的 IPAROOM_ADMIN_TOKEN，重新启动服务。</p>
+              </Collapsible.Content></Collapsible.Root
             >
-          </div>
+          {/if}
+        </form>
+      </div>
+    {:else if section === 'builds'}
+      <div class="page-heading">
+        <div>
+          <h1>构建仓库</h1>
+          <p class="repository-summary">
+            {data.builds.length} 个构建<span aria-hidden="true">/</span>{sizeLabel(bytes)}
+          </p>
         </div>
-        {#if builds.length === 0}<div class="empty-state">
-            <div class="empty-icon"><Box size={36} strokeWidth={1.4} /></div>
-            <h3>{data.builds.length ? '没有匹配的构建' : '还没有测试构建'}</h3>
-            <p>
-              {data.builds.length
-                ? '试试其他关键词或签名类型。'
-                : '上传 Xcode 导出的 IPA，自动生成安装链接与二维码。'}
-            </p>
-            {#if !data.builds.length}<button class="primary" onclick={() => (uploadOpen = true)}
-                ><Upload size={17} />上传第一个 IPA</button
-              ><button class="text-button" onclick={() => (section = 'cli')}
-                >也可以通过 CLI 上传 <ArrowUpRight size={14} /></button
-              >{/if}
-          </div>{:else}<div class="build-list">
-            {#each builds as build (build.id)}<article class="build-row">
-                <div class="app-icon">{build.name.slice(0, 1).toUpperCase()}</div>
-                <div class="build-info">
-                  <h3>{build.name}<span class="badge">{signingLabels[build.signing]}</span></h3>
-                  <p>{build.bundleId}</p>
-                  <div class="build-meta">
-                    <span>v{build.version} <span class="subtle">({build.buildNumber})</span></span
-                    ><span>{sizeLabel(build.size)}</span><time datetime={build.createdAt}
-                      >{new Date(build.createdAt).toLocaleDateString('zh-CN')}</time
-                    >
-                  </div>
-                  {#if build.notes}<p class="notes-preview">{build.notes}</p>{/if}
-                </div>
-                <div class="row-actions">
-                  <span class:muted={!build.shareToken} class="share-status"
-                    >{build.shareToken ? '分享中' : '已撤销'}</span
-                  ><button class="secondary" onclick={() => share(build)}
-                    ><Link size={15} />分享</button
-                  ><button
-                    class="icon-button danger"
-                    aria-label={`删除 ${build.name}`}
-                    onclick={() => {
-                      selected = build;
-                      failure = '';
-                      deleteOpen = true;
-                    }}><Trash2 size={17} /></button
-                  >
-                </div>
-              </article>{/each}
-          </div>{/if}
-        <div class="tip">
-          <Shield size={16} />
-          <p>分享链接的持有者可下载此构建。使用完毕后，可随时撤销分享。</p>
-        </div>
-      {:else}
-        <div class="page-heading">
-          <div>
-            <h1>CLI 与集成</h1>
-            <p>把测试分发接入 Xcode 和你的构建流水线。</p>
-          </div>
-          <Terminal size={38} strokeWidth={1.2} />
-        </div>
-        <div class="panel cli-panel">
-          <Tabs.Root value="local"
-            ><Tabs.List class="tabs" aria-label="CLI 使用说明"
-              ><Tabs.Trigger value="local">直接启动</Tabs.Trigger><Tabs.Trigger value="upload"
-                >上传 IPA</Tabs.Trigger
-              ><Tabs.Trigger value="xcode">Xcode 导出</Tabs.Trigger><Tabs.Trigger value="mcp"
-                >Agent / MCP</Tabs.Trigger
-              ><Tabs.Trigger value="ci">CI / 自动化</Tabs.Trigger></Tabs.List
-            ><Tabs.Content value="local">
-              <h3>一个 IPA，直接开启测试页面</h3>
-              <p>安装 CLI 后，在任意目录运行。自动选择内网地址、打开页面，并打印二维码。</p>
-              <pre><code
-                  >iparoom ./MyApp.ipa
-iparoom ./exports --notes "本周测试构建"
-# 使用设备信任的内网证书
-iparoom ./MyApp.ipa --hostname ipa.lan --port 8443 --cert ./server.crt --key ./server.key</code
-                ></pre>
-              <p>
-                默认监听全部 IPv4 网卡；hostname 控制链接域名。无需提前启动服务或登录。按 Ctrl+C
-                停止临时分享。默认 HTTP 支持下载；iOS 在线安装需使用受信任的 HTTPS 证书。
-              </p>
-            </Tabs.Content>
-            <Tabs.Content value="upload"
-              ><h3>一次登录，每次构建一行命令</h3>
-              <p>在仓库中安装 CLI。发布 npm 包后可改用全局 npm 安装。</p>
-              <pre><code
-                  >pnpm build:cli
-cd packages/cli
-npm link
-iparoom login --server {data.origin}
-iparoom upload ./exports/MyApp.ipa --notes "修复登录问题"</code
-                ></pre>
-              <p>
-                登录会交互式读取 Token，也支持 IPAROOM_TOKEN 环境变量。上传后输出安装页、IPA
-                下载地址和构建 ID。
-              </p></Tabs.Content
-            ><Tabs.Content value="xcode"
-              ><h3>从 Archive 到安装链接</h3>
-              <pre><code
-                  >iparoom export ./MyApp.xcarchive \
-  --options ./ExportOptions.plist \
-  --output ./exports \
-  --notes "本周测试构建"</code
-                ></pre>
-              <p>
-                CLI 调用 xcodebuild -exportArchive，成功导出后上传。签名证书与导出选项由 Xcode
-                管理。
-              </p></Tabs.Content
-            ><Tabs.Content value="mcp">
-              <h3>由 Agent 独立启动 MCP</h3>
-              <p>
-                在 Agent 的 MCP 配置中使用 iparoom-mcp，默认通过 stdio 通信。一次会话可以分享多个
-                IPA。
-              </p>
-              <pre><code
-                  >iparoom-mcp --hostname ipa.lan --port 8443 \
-  --cert ./server.crt --key ./server.key
-# 等价入口：iparoom mcp
-# 工具：iparoom_create_install_link，参数 path / notes</code
-                ></pre>
-              <p>
-                默认监听 0.0.0.0；设备需能解析 hostname，证书需覆盖该域名。MCP 停止后临时链接失效。
-              </p>
-            </Tabs.Content><Tabs.Content value="ci"
-              ><h3>为流水线保留机器可读输出</h3>
-              <pre><code
-                  ># 将 Token 注入 CI 的 Secret 环境变量
-export IPAROOM_SERVER={data.origin}
-# IPAROOM_TOKEN 由 Secret 管理器提供
-iparoom upload ./exports --json
-iparoom list --json</code
-                ></pre>
-              <p>
-                目录必须包含唯一的 IPA。失败退出码为 1，JSON 结果可继续传递到后续步骤。
-              </p></Tabs.Content
-            ></Tabs.Root
+        <Button.Root
+          class="primary"
+          bind:ref={uploadTrigger}
+          onclick={() => {
+            failure = '';
+            uploadOpen = true;
+          }}><Plus size={18} />上传 IPA</Button.Root
+        >
+      </div>
+      <div class="repository">
+        <div class="list-toolbar">
+          <label class="search"
+            ><Search size={17} /><input
+              aria-label="搜索构建"
+              placeholder="搜索构建"
+              bind:value={query}
+            /></label
           >
+          <SigningFilter bind:value={filter} />
         </div>
-        <div class="panel requirement">
-          <Shield size={22} />
-          <div>
-            <h3>安装前，确认签名与 HTTPS</h3>
+        {#if builds.length === 0}
+          <div class="empty-state">
+            <Box size={36} strokeWidth={1.25} />
+            <h2>{data.builds.length ? '没有匹配的构建' : '还没有构建'}</h2>
+            {#if data.builds.length}<Button.Root
+                class="secondary"
+                onclick={() => {
+                  query = '';
+                  filter = 'all';
+                }}>清除筛选</Button.Root
+              >
+            {:else}<Button.Root class="secondary" onclick={() => (uploadOpen = true)}
+                ><Plus size={16} />上传 IPA</Button.Root
+              >{/if}
+          </div>
+        {:else}
+          <div class="build-columns" aria-hidden="true">
+            <span>应用</span><span>版本</span><span>签名</span><span>大小</span><span>上传时间</span
+            ><span></span>
+          </div>
+          <div class="build-list">
+            {#each builds as build (build.id)}
+              <article class="build-row">
+                <div class="build-app">
+                  <div class="app-icon" data-tone={build.name.charCodeAt(0) % 4}>
+                    {build.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div class="build-info">
+                    <h2>{build.name}</h2>
+                    <p>{build.bundleId}</p>
+                  </div>
+                </div>
+                <div class="build-version">
+                  <strong>{build.version}</strong><span>Build {build.buildNumber}</span>
+                </div>
+                <div class="build-signing">
+                  <span class="badge">{signingLabels[build.signing]}</span>
+                </div>
+                <span class="build-size">{sizeLabel(build.size)}</span>
+                <time class="build-date" datetime={build.createdAt}
+                  >{new Date(build.createdAt).toLocaleDateString('zh-CN', {
+                    month: '2-digit',
+                    day: '2-digit'
+                  })}</time
+                >
+                <div class="row-actions">
+                  {#if !build.shareToken}<span class="revoked-status">已撤销</span>{/if}
+                  <Button.Root
+                    class="secondary share-button"
+                    aria-label="分享"
+                    onclick={() => share(build)}><Link size={15} /><span>分享</span></Button.Root
+                  >
+                  <DropdownMenu.Root>
+                    <DropdownMenu.Trigger
+                      class="icon-button"
+                      aria-label={`更多操作 ${build.name}`}
+                      onfocus={(event) => {
+                        deleteReturnFocus = event.currentTarget;
+                      }}><MoreHorizontal size={19} /></DropdownMenu.Trigger
+                    >
+                    <DropdownMenu.Portal
+                      ><DropdownMenu.Content
+                        class="popover"
+                        sideOffset={6}
+                        align="end"
+                        onCloseAutoFocus={(event) => {
+                          if (deleteOpen) event.preventDefault();
+                        }}
+                      >
+                        <DropdownMenu.Item
+                          class="popover-item danger"
+                          onSelect={() => {
+                            selected = build;
+                            failure = '';
+                            deleteOpen = true;
+                          }}><Trash2 size={16} />删除构建</DropdownMenu.Item
+                        >
+                      </DropdownMenu.Content></DropdownMenu.Portal
+                    >
+                  </DropdownMenu.Root>
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <div class="page-heading"><h1>CLI 与集成</h1></div>
+      <div class="integration-panel">
+        <Tabs.Root value="local">
+          <Tabs.List class="tabs" aria-label="CLI 使用说明"
+            ><Tabs.Trigger value="local">直接启动</Tabs.Trigger><Tabs.Trigger value="upload"
+              >上传 IPA</Tabs.Trigger
+            ><Tabs.Trigger value="xcode">Xcode 导出</Tabs.Trigger><Tabs.Trigger value="mcp"
+              >Agent / MCP</Tabs.Trigger
+            ><Tabs.Trigger value="ci">CI</Tabs.Trigger></Tabs.List
+          >
+          <Tabs.Content value="local" class="integration-content"
+            ><h2>直接启动</h2>
+            <p>传入 IPA，启动临时分发页。</p>
+            <CodeBlock code={'iparoom ./MyApp.ipa'} />
+            <Collapsible.Root class="help-section"
+              ><Collapsible.Trigger class="disclosure"
+                >HTTPS 与 hostname <ChevronDown size={15} /></Collapsible.Trigger
+              ><Collapsible.Content class="help-content">
+                <CodeBlock
+                  code={'iparoom ./MyApp.ipa --hostname ipa.lan --port 8443 \\\n  --cert ./server.crt --key ./server.key'}
+                />
+                <p>
+                  默认监听 0.0.0.0。hostname 需能被设备解析，证书需匹配该域名并被设备信任。按 Ctrl+C
+                  停止临时分享。
+                </p>
+              </Collapsible.Content></Collapsible.Root
+            >
+          </Tabs.Content>
+          <Tabs.Content value="upload" class="integration-content"
+            ><h2>上传到常驻服务</h2>
+            <CodeBlock
+              code={`iparoom login --server ${data.origin}
+iparoom upload ./MyApp.ipa --notes "修复登录问题"`}
+            />
+            <p>登录时输入管理 Token。</p></Tabs.Content
+          >
+          <Tabs.Content value="xcode" class="integration-content"
+            ><h2>Xcode 导出</h2>
+            <CodeBlock
+              code={'iparoom export ./MyApp.xcarchive \\\n  --options ./ExportOptions.plist \\\n  --output ./exports'}
+            />
+            <p>导出成功后自动上传到已登录的服务。</p></Tabs.Content
+          >
+          <Tabs.Content value="mcp" class="integration-content"
+            ><h2>独立 MCP</h2>
+            <CodeBlock
+              code={'iparoom-mcp --hostname ipa.lan --port 8443 \\\n  --cert ./server.crt --key ./server.key'}
+            />
+            <p>使用 stdio；工具 iparoom_create_install_link 接收 path 和 notes。</p></Tabs.Content
+          >
+          <Tabs.Content value="ci" class="integration-content"
+            ><h2>CI</h2>
+            <CodeBlock
+              code={`export IPAROOM_SERVER=${data.origin}
+iparoom upload ./exports --json`}
+            />
+            <p>通过 CI Secret 注入 IPAROOM_TOKEN。</p></Tabs.Content
+          >
+        </Tabs.Root>
+        <Collapsible.Root class="help-section integration-help"
+          ><Collapsible.Trigger class="disclosure"
+            >安装要求 <ChevronDown size={15} /></Collapsible.Trigger
+          ><Collapsible.Content class="help-content">
             <p>
-              Ad Hoc 和开发签名需要包含测试设备 UDID。App Store 导出包不适用于此安装方式。局域网
-              HTTPS 、设备信任的证书与有效签名是安装的前提。
+              在线安装需要受信任的 HTTPS 与有效签名。开发签名 / Ad Hoc 要包含设备 UDID；App Store
+              构建使用 TestFlight 分发。
             </p>
             <a
+              class="text-link"
               href="https://support.apple.com/en-gb/guide/deployment/depce7cefc4d/1/web"
               target="_blank"
               rel="noreferrer">Apple 分发说明 <ArrowUpRight size={14} /></a
             >
-          </div>
-        </div>
-      {/if}
-      <footer><span>IPA Room</span><span>测试构建分发</span></footer>
-    </main>
-  </div>
+          </Collapsible.Content></Collapsible.Root
+        >
+      </div>
+    {/if}
+  </main>
 </div>
 {#if notice}<div class="toast" role="status">
-    <Check size={18} />{notice}<button
+    <Check size={16} />{notice}<Button.Root
       class="icon-button"
       onclick={() => (notice = '')}
-      aria-label="关闭提示"><X size={15} /></button
+      aria-label="关闭提示"><X size={15} /></Button.Root
     >
   </div>{/if}
 {#if failure && !uploadOpen && !shareOpen && !deleteOpen}<div class="toast error" role="alert">
-    {failure}<button onclick={() => (failure = '')} aria-label="关闭错误"><X size={15} /></button>
+    {failure}<Button.Root class="icon-button" onclick={() => (failure = '')} aria-label="关闭错误"
+      ><X size={15} /></Button.Root
+    >
   </div>{/if}
-<Dialog.Root bind:open={uploadOpen}
-  ><Dialog.Portal
-    ><Dialog.Overlay class="dialog-overlay" /><Dialog.Content class="dialog"
-      ><div class="dialog-top">
-        <span class="small-icon"><Upload size={20} /></span><Dialog.Close
+
+<Dialog.Root bind:open={uploadOpen}>
+  <Dialog.Portal
+    ><Dialog.Overlay class="dialog-overlay" /><Dialog.Content
+      class="dialog"
+      onEscapeKeydown={(event) => {
+        if (uploading) event.preventDefault();
+      }}
+      onInteractOutside={(event) => {
+        if (uploading) event.preventDefault();
+      }}
+    >
+      <div class="dialog-heading">
+        <Dialog.Title class="dialog-title">上传 IPA</Dialog.Title><Dialog.Close
           class="icon-button"
           disabled={uploading}
           aria-label="关闭"><X size={19} /></Dialog.Close
         >
       </div>
-      <Dialog.Title class="dialog-title">上传一个新构建</Dialog.Title><Dialog.Description
-        class="dialog-description">选择 Xcode 导出的 IPA，安装链接会自动生成。</Dialog.Description
-      ><label class="file-picker"
-        ><Upload size={28} /><strong>{file?.name ?? '点击选择 IPA 文件'}</strong><span
-          >{file ? sizeLabel(file.size) : `支持 .ipa，最大 ${sizeLabel(data.maxBytes)}`}</span
-        ><input type="file" accept=".ipa" onchange={choose} disabled={uploading} /></label
-      ><label for="notes">更新说明 <span class="subtle">可选</span></label><textarea
+      <Dialog.Description class="sr-only">上传 Xcode 导出的 IPA 并生成安装链接。</Dialog.Description
+      >
+      <label class="file-picker"
+        ><Upload size={25} /><strong>{file?.name ?? '选择 IPA 文件'}</strong><span
+          >{file ? sizeLabel(file.size) : `最大 ${sizeLabel(data.maxBytes)}`}</span
+        ><input
+          class="sr-only"
+          type="file"
+          accept=".ipa"
+          onchange={choose}
+          disabled={uploading}
+        /></label
+      >
+      <Label.Root for="notes">更新说明 <span class="subtle">可选</span></Label.Root><textarea
         id="notes"
-        placeholder="这一次构建，有哪些值得测试的新变化？"
+        placeholder="更新内容"
         maxlength={2000}
         bind:value={notes}
-        disabled={uploading}></textarea>{#if uploading}<div class="upload-progress">
-          <progress max="100" value={progress}></progress><span
-            >{progress === 100 ? '正在解析构建…' : `上传中 ${progress}%`}</span
-          >
-        </div>{/if}{#if failure}<p class="error" role="alert">{failure}</p>{/if}<button
-        class="primary full"
-        disabled={uploading || !file}
-        onclick={upload}
-        >{#if uploading}<LoaderCircle class="spin" size={17} />{:else}<Upload
-            size={17}
-          />{/if}{uploading ? '上传处理中' : '上传并生成链接'}</button
-      ></Dialog.Content
-    ></Dialog.Portal
-  ></Dialog.Root
->
-<Dialog.Root bind:open={shareOpen}
-  ><Dialog.Portal
-    ><Dialog.Overlay class="dialog-overlay" /><Dialog.Content class="dialog"
-      ><div class="dialog-top">
-        <span class="small-icon"><Link size={20} /></span><Dialog.Close
+        disabled={uploading}></textarea>
+      {#if uploading}<div class="upload-progress">
+          <Progress.Root value={progress} max={100} aria-label="上传进度"
+            ><div class="progress-fill" style:width={`${progress}%`}></div></Progress.Root
+          ><span>{progress === 100 ? '正在解析…' : `${progress}%`}</span>
+        </div>{/if}
+      {#if failure}<p class="error" role="alert">{failure}</p>{/if}
+      <Button.Root class="primary full" disabled={uploading || !file} onclick={upload}
+        >{#if uploading}<LoaderCircle class="spin" size={17} />{/if}{uploading
+          ? '上传中…'
+          : '上传并生成链接'}</Button.Root
+      >
+    </Dialog.Content></Dialog.Portal
+  >
+</Dialog.Root>
+<Dialog.Root bind:open={shareOpen}>
+  <Dialog.Portal
+    ><Dialog.Overlay class="dialog-overlay" /><Dialog.Content class="dialog share-dialog">
+      <div class="dialog-heading">
+        <Dialog.Title class="dialog-title">{selected?.name}</Dialog.Title><Dialog.Close
           class="icon-button"
           aria-label="关闭"><X size={19} /></Dialog.Close
         >
       </div>
-      <Dialog.Title class="dialog-title">分享 {selected?.name}</Dialog.Title><Dialog.Description
-        class="dialog-description">在测试设备上打开链接，或使用相机扫描二维码。</Dialog.Description
-      >{#if selected?.installUrl}<div class="qr-wrap">
-          {#if qr}<img src={qr} alt="安装页二维码" width="200" height="200" />{/if}<span
-            >v{selected.version} · Build {selected.buildNumber}</span
-          >
+      <Dialog.Description class="dialog-description"
+        >{selected?.version} · Build {selected?.buildNumber}</Dialog.Description
+      >
+      {#if selected?.installUrl}<div class="qr-wrap">
+          {#if qr}<img src={qr} alt="安装页二维码" width="200" height="200" />{/if}
         </div>
         <div class="copy-field">
-          <input readonly value={selected.installUrl} aria-label="安装链接" /><button
+          <input readonly value={selected.installUrl} aria-label="安装链接" /><Button.Root
             class="icon-button"
             aria-label="复制安装链接"
-            onclick={() => copy(selected!.installUrl!)}><Copy size={18} /></button
+            onclick={() => copy(selected!.installUrl!)}><Copy size={17} /></Button.Root
           >
         </div>
         <a class="primary full" href={selected.installUrl} target="_blank" rel="noreferrer"
-          >打开安装页 <ArrowUpRight size={17} /></a
+          >打开安装页 <ArrowUpRight size={16} /></a
         >
-        <div class="share-options">
-          <button class="text-button" disabled={busy} onclick={() => changeShare(true)}
-            >重新生成链接</button
-          ><button class="text-button danger" disabled={busy} onclick={() => changeShare(false)}
-            >撤销分享</button
-          >
-        </div>{:else}<div class="empty-small">
-          <Shield size={30} />
-          <p>当前构建的分享已撤销。</p>
+        <Collapsible.Root class="help-section"
+          ><Collapsible.Trigger class="disclosure"
+            >链接管理 <ChevronDown size={15} /></Collapsible.Trigger
+          ><Collapsible.Content class="help-content">
+            <p>持有链接即可下载。重新生成或撤销后，旧链接失效。</p>
+            <div class="share-options">
+              <Button.Root class="secondary" disabled={busy} onclick={() => changeShare(true)}
+                >重新生成</Button.Root
+              ><Button.Root
+                class="secondary danger"
+                disabled={busy}
+                onclick={() => changeShare(false)}>撤销分享</Button.Root
+              >
+            </div>
+          </Collapsible.Content></Collapsible.Root
+        >
+      {:else}<div class="empty-small">
+          <Link size={28} />
+          <p>分享已撤销</p>
         </div>
-        <button class="primary full" disabled={busy} onclick={() => changeShare(true)}
-          >生成新分享链接</button
-        >{/if}{#if failure}<p class="error" role="alert">{failure}</p>{/if}</Dialog.Content
-    ></Dialog.Portal
-  ></Dialog.Root
->
-<Dialog.Root bind:open={deleteOpen}
-  ><Dialog.Portal
-    ><Dialog.Overlay class="dialog-overlay" /><Dialog.Content class="dialog"
-      ><Dialog.Title class="dialog-title">删除这个构建？</Dialog.Title><Dialog.Description
-        class="dialog-description"
-        >{selected?.name} 的 IPA 文件将被删除，已有安装链接会失效。设备上已经安装的应用不受影响。</Dialog.Description
-      >{#if failure}<p class="error" role="alert">{failure}</p>{/if}
+        <Button.Root class="primary full" disabled={busy} onclick={() => changeShare(true)}
+          >生成新分享链接</Button.Root
+        >{/if}
+      {#if failure}<p class="error" role="alert">{failure}</p>{/if}
+    </Dialog.Content></Dialog.Portal
+  >
+</Dialog.Root>
+<Dialog.Root bind:open={deleteOpen}>
+  <Dialog.Portal
+    ><Dialog.Overlay class="dialog-overlay" /><Dialog.Content
+      class="dialog"
+      onCloseAutoFocus={(event) => {
+        const target = deleteReturnFocus?.isConnected ? deleteReturnFocus : uploadTrigger;
+        if (target) {
+          event.preventDefault();
+          target.focus();
+        }
+      }}
+    >
+      <Dialog.Title class="dialog-title">删除 {selected?.name}？</Dialog.Title><Dialog.Description
+        class="dialog-description">IPA 和分享链接将被删除。</Dialog.Description
+      >
+      {#if failure}<p class="error" role="alert">{failure}</p>{/if}
       <div class="dialog-actions">
-        <Dialog.Close class="secondary" disabled={busy}>取消</Dialog.Close><button
-          class="primary destructive"
+        <Dialog.Close class="secondary" disabled={busy}>取消</Dialog.Close><Button.Root
+          class="destructive"
           disabled={busy}
-          onclick={remove}>{busy ? '删除中…' : '删除构建'}</button
+          onclick={remove}>{busy ? '删除中…' : '删除构建'}</Button.Root
         >
-      </div></Dialog.Content
-    ></Dialog.Portal
-  ></Dialog.Root
->
+      </div>
+    </Dialog.Content></Dialog.Portal
+  >
+</Dialog.Root>

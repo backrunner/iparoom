@@ -4,6 +4,8 @@
 
 基于 **SvelteKit + Svelte 5 + Bits UI + SCSS** 的局域网自托管 iOS 测试构建分发应用，配套 Node.js CLI。上传 Xcode 导出的 IPA，得到可分享的安装页、二维码、HTTPS IPA URL 和 `itms-services` OTA 安装链接。
 
+网页提供构建搜索与签名筛选，分享窗口内可展开「链接管理」来轮换或撤销链接，行尾菜单可删除构建。交互控件使用 Bits UI，支持键盘操作、系统深色模式与手机布局；安装要求和帮助默认折叠。
+
 ## 本地运行
 
 要求 Node.js 24+、pnpm 12。

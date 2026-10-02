@@ -68,10 +68,10 @@ test('native login and logout preserve same-origin form protection without JavaS
     const response = await page.goto('http://127.0.0.1:4178/');
     expect(response!.headers()['referrer-policy']).toBe('same-origin');
     await page.getByLabel('管理 Token').fill(token);
-    await page.getByRole('button', { name: '进入工作台' }).click();
+    await page.getByRole('button', { name: '登录', exact: true }).click();
     await expect(page.getByRole('heading', { name: '构建仓库', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '退出登录' }).click();
-    await expect(page.getByRole('heading', { name: '分享你的测试构建' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '登录构建仓库' })).toBeVisible();
     expect(
       (
         await request.post('/?/login', {
@@ -131,11 +131,11 @@ test('browser login, upload, search, share and mobile installation page', async 
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '进入你的构建仓库' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '登录构建仓库' })).toBeVisible();
   await page.getByLabel('管理 Token').fill(token);
-  await page.getByRole('button', { name: '进入工作台' }).click();
+  await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '构建仓库', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '上传 IPA', exact: true }).click();
+  await page.getByRole('button', { name: '上传 IPA', exact: true }).first().click();
   await page.locator('input[type=file]').setInputFiles({
     name: 'Fixture.ipa',
     mimeType: 'application/octet-stream',
@@ -143,7 +143,7 @@ test('browser login, upload, search, share and mobile installation page', async 
   });
   await page.getByLabel('更新说明').fill('浏览器上传验证');
   await page.getByRole('button', { name: '上传并生成链接' }).click();
-  await expect(page.getByRole('heading', { name: '测试 & Demo' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '测试 & Demo', exact: true })).toBeVisible();
   await page.getByLabel('搜索构建').fill('不存在');
   await expect(page.getByText('没有匹配的构建')).toBeVisible();
   await page.getByLabel('搜索构建').fill('');
@@ -155,9 +155,9 @@ test('browser login, upload, search, share and mobile installation page', async 
   await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: 'CLI 与集成' }).click();
   await page.getByRole('tab', { name: 'Xcode 导出' }).click();
-  await expect(page.getByText('从 Archive 到安装链接')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Xcode 导出', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Agent / MCP' }).click();
-  await expect(page.getByRole('heading', { name: '由 Agent 独立启动 MCP' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '独立 MCP' })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(sharePath);
   await expect(page.getByRole('link', { name: '安装到 iPhone / iPad' })).toHaveAttribute(
@@ -175,20 +175,27 @@ test('browser login, upload, search, share and mobile installation page', async 
 
 test('compact layouts support both appearances and keyboard dialog dismissal', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: '分享你的测试构建' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '登录构建仓库' })).toBeVisible();
     await page.getByRole('button', { name: 'CLI 与集成' }).click();
     await page.getByRole('tab', { name: 'Agent / MCP' }).click();
-    await expect(page.getByRole('heading', { name: '由 Agent 独立启动 MCP' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '独立 MCP' })).toBeVisible();
+    const command = await page.getByRole('tabpanel').locator('pre code').textContent();
+    expect(command).toContain('\\\n');
+    await page.getByRole('button', { name: '复制命令' }).click();
+    await expect(page.getByRole('status')).toHaveText('已复制');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );
     await page.getByRole('button', { name: '构建仓库' }).click();
     await page.getByLabel('管理 Token').fill(token);
-    await page.getByRole('button', { name: '进入工作台' }).click();
-    const trigger = page.getByRole('button', { name: '上传 IPA', exact: true });
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '构建仓库', exact: true })).toBeVisible();
+    const trigger = page.getByRole('button', { name: '上传 IPA', exact: true }).first();
     const bounds = await trigger.boundingBox();
     expect(bounds!.height).toBeGreaterThanOrEqual(44);
     expect(bounds!.width).toBeGreaterThanOrEqual(44);
@@ -196,7 +203,9 @@ test('compact layouts support both appearances and keyboard dialog dismissal', a
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await page.keyboard.press('Tab');
-    expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+    await expect
+      .poll(() => dialog.evaluate((element) => element.contains(document.activeElement)))
+      .toBe(true);
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
     await expect(trigger).toBeFocused();
@@ -204,6 +213,71 @@ test('compact layouts support both appearances and keyboard dialog dismissal', a
       true
     );
     await page.getByRole('button', { name: '退出登录' }).click();
-    await expect(page.getByRole('heading', { name: '分享你的测试构建' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '登录构建仓库' })).toBeVisible();
+  }
+});
+
+test('Bits controls filter builds, manage links and confirm deletion on mobile', async ({
+  page,
+  request
+}) => {
+  const upload = await request.post('/api/builds', { headers, data: await fixture() });
+  expect(upload.status()).toBe(201);
+  const { build } = await upload.json();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await page.goto('/');
+    await page.getByLabel('管理 Token').fill(token);
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '测试 & Demo', exact: true })).toBeVisible();
+    const filter = page.getByRole('button', { name: '筛选签名类型' });
+    await filter.focus();
+    await page.keyboard.press('ArrowDown');
+    const options = page.getByRole('listbox');
+    await expect(options).toBeVisible();
+    const bounds = await options.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+    await page.getByRole('option', { name: '未识别签名', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '没有匹配的构建' })).toBeVisible();
+    await page.getByRole('button', { name: '清除筛选' }).click();
+    await expect(page.getByRole('heading', { name: '测试 & Demo', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '分享', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const oldLink = await dialog.getByLabel('安装链接', { exact: true }).inputValue();
+    await dialog.getByRole('button', { name: '链接管理' }).click();
+    await expect(dialog.getByRole('button', { name: '链接管理' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    await dialog.getByRole('button', { name: '重新生成', exact: true }).click();
+    await expect(dialog.getByLabel('安装链接', { exact: true })).not.toHaveValue(oldLink);
+    expect((await request.get(new URL(oldLink).pathname)).status()).toBe(404);
+    await dialog.getByRole('button', { name: '撤销分享' }).click();
+    await expect(dialog.getByText('分享已撤销', { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: '生成新分享链接' }).click();
+    await expect(dialog.getByLabel('安装链接', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '更多操作 测试 & Demo' }).click();
+    await page.getByRole('menuitem', { name: '删除构建' }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '取消' })).toBeFocused();
+    await dialog.getByRole('button', { name: '取消' }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole('button', { name: '更多操作 测试 & Demo' })).toBeFocused();
+    await expect(page.getByRole('heading', { name: '测试 & Demo', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '更多操作 测试 & Demo' }).click();
+    await page.getByRole('menuitem', { name: '删除构建' }).click();
+    await dialog.getByRole('button', { name: '删除构建' }).click();
+    await expect(page.getByRole('heading', { name: '还没有构建' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '上传 IPA', exact: true }).first()).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    expect(errors).toEqual([]);
+  } finally {
+    await request.delete(`/api/builds/${build.id}`, { headers }).catch(() => {});
   }
 });
